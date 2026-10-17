@@ -36,3 +36,6 @@ styles/gallery.mp4
 *.part
 # docs/site: the author's own films for the homepage stay local
 docs/site/media/
+
+# tools/kaggle: setup.sh writes the probed render env and the NVENC ffmpeg wrapper here
+.kaggle/
