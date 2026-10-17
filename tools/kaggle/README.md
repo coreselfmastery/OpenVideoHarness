@@ -1,14 +1,21 @@
 # 在 Kaggle（2×T4）上渲染 HyperFrames 片子
 
-Kaggle 的免费 2×T4 实例（4 核 CPU、29 GB 内存）是这个仓库能用的最快的免费渲染机，但开箱什么都缺：Node 版本不对、ffmpeg 不一定带 NVENC、Chrome 要现下载，渲染命令本身还有几个不设就慢 3 倍的开关。这个文件夹是**一次 setup + 一条渲染命令**：
+Kaggle 的免费 2×T4 实例（4 核 CPU、29 GB 内存）是这个仓库能用的最快的免费渲染机，但开箱什么都缺：Node 版本不对、ffmpeg 不一定带 NVENC、Chrome 要现下载，渲染命令本身还有几个不设就慢 3 倍的开关。这个文件夹是**一次 setup + 一条渲染命令**。
+
+在 notebook 里（Settings → Internet 打开，每个 `!` cell 都是新 shell，所以 `source` 写在命令行里）：
 
 ```bash
-tools/kaggle/setup.sh                                  # 每个会话跑一次（首次 5–10 分钟，之后秒级：都是缓存）
-bin/vh new promo my-film                               # 照常建项目（自动 bin/vh hf-init：GSAP 本地化、字体 local()）
-# …写合成，npx hyperframes lint 到 0 error…
-tools/kaggle/render.sh projects/<date>-my-film --quality draft    # 评审稿
-tools/kaggle/render.sh projects/<date>-my-film --quality delivery # 成片（声音照常 bin/vh mux 套上）
+!git clone --depth 1 https://github.com/coreselfmastery/OpenVideoHarness.git /kaggle/working/OpenVideoHarness
+%cd /kaggle/working/OpenVideoHarness
+!bash tools/kaggle/setup.sh                    # 每个会话一次（首次 5–10 分钟，重启会话后秒级：缓存在 /kaggle/working）
+!source .kaggle/env.sh && bin/vh new promo my-film        # 照常建项目（自动 bin/vh hf-init：GSAP 本地化、字体 local()）
+# …写合成，source .kaggle/env.sh && npx hyperframes lint 到 0 error…
+!bash tools/kaggle/render.sh projects/<date>-my-film --quality draft     # 评审稿（render.sh 自己会 source env.sh）
+!bash tools/kaggle/render.sh projects/<date>-my-film --quality delivery  # 成片
+!source .kaggle/env.sh && bin/vh mux projects/<date>-my-film/renders/<成片>.mp4 <混音> <输出>.mp4   # 声音照常套上
 ```
+
+在终端里（Kaggle 的 Terminal、或任何 Linux 机器）更简单：`source .kaggle/env.sh` 一次，之后所有命令都在。
 
 也适用于任何 Linux GPU 机器；没有 GPU 时它同样工作（Chrome 走 SwiftShader、编码走 libx264），只是快不起来。开 Kaggle 笔记本时记得把 **Internet** 开关打开（Settings → Internet），`npx` 和 Chrome 下载都要联网。
 
