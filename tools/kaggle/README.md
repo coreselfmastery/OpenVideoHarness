@@ -126,7 +126,8 @@ HyperFrames 的 `--output-resolution` 只会**向上**超采样（1080p、4K）�
 - `bin/vh bake <project|page> [--out scene.png] [--at t] [--hide sel,sel…]`：把页面标记的动画层（`[data-bake-hide]`）藏起来，t 时刻截一张**无损 PNG**（默认 `assets/scene.png`）。合成器每一帧都要重跑、但内容永远不变的东西——玻璃面板背后的模糊、叠起来的阴影——冻成一张图。
 - 样板：`tools/kaggle/fixture/css-cost/` 是同一画面的一对双胞胎——`index.html` 是贵的那种（两层叠着的 `backdrop-filter`，卫星一动整块玻璃跟着重滤），`baked.html` 用 bake 出来的 PNG 加同样的两个动元素。
 - 实测（960×540、6 s、同参数 x264 crf 16）：**活模糊 11.4 s → 烘焙 6.5 s，快 1.75×**（去掉固定开销后画帧侧约 2.3×）；两支片子互 PSNR **58.4 dB**（同一画面，远超 40 dB 门），新鲜烘焙与已提交的 PNG 逐位相同（PSNR ∞）。
-- 测试套件把这三件事都钉住了：新鲜 bake = 提交的 PNG、双胞胎片子互 PSNR ≥ 40 dB、`--res` 档真的出 480×270。
+- 平台诚实条款（CI 在 macOS 上跑出来的，run 39123478825）：Chrome 的栅格化是**平台方言**——同一页面，macOS 的 Chrome 烘出来与 Linux 烘的那张 `scene.png` 只有 29.7 dB（SF 与 DejaVu 的字形差异就够这个数了），所以「新鲜 bake = 提交的 PNG」只在烘它的平台上成立。测试套件随之改口径：**本平台的参照是第二次 bake**（同一页面连烘两次必须同图），双胞胎片子的 `scene.png` 换成本平台刚烘的那张（比较的永远是「活滤 vs 冻图」，不是「本平台 vs 参照的平台」），提交的 PNG 只在 Linux 上对（它就是在 Linux 烘的）。
+- 测试套件把这些都钉住了：连烘两次同图（本平台参照）、双胞胎片子互 PSNR ≥ 40 dB（带本平台自己的 scene）、`--res` 档真的出 480×270；提交的 PNG 只在 Linux 上比对，别的平台明说跳过的原因。
 
 写作侧的规矩没变（engines/README.md）：动画元素别垫在玻璃下面（bake 藏不掉它）、文字要跟着动画走的就别进 PNG。
 
@@ -221,6 +222,6 @@ HyperFrames 的 `--output-resolution` 只会**向上**超采样（1080p、4K）�
 
 ## 测试
 
-`tools/kaggle/test.sh`（`tools/ci.sh` 自动跑它）用**桩**验证 setup.sh 的每个探针、ffmpeg 包装器的 tier 重调（引擎真实参数形状的 12 种情况）、render.sh 的全部决定和错误路径、render-split 的计划数字；有 Chrome 的机器上再跑**真**的 32 s 切分渲染：determinism 门、两半并行、三重拼接校验、sidecar 落点、打断后一个文件都不留。89 项断言，全部绿才许过。
+`tools/kaggle/test.sh`（`tools/ci.sh` 自动跑它）用**桩**验证 setup.sh 的每个探针、ffmpeg 包装器的 tier 重调（引擎真实参数形状的 12 种情况）、render.sh 的全部决定和错误路径、render-split 的计划数字；有 Chrome 的机器上再跑**真**的 32 s 切分渲染：determinism 门、两半并行、三重拼接校验、sidecar 落点、打断后一个文件都不留。
 
-现在这一套还用桩钉住：render.sh **出片后的 held 回读卡**（要了 NVENC 文件却是 libx264、要 30 fps 文件却是 60——每个分支都驱动到）、`--fps 30 默认`（声明 60 → 渲 30，`--fps 60` 覆盖）、帧提取缓存落位、`render.mjs`/`render-split.sh` 的 `--res` 护栏（升采样拒、0.25 地板拒、`--dpr` 互斥）、lambda.sh 的参数映射与全部拒绝（桩引擎 + 桩 AWS 工具）。有 Chrome 的机器再跑**真**的：css-cost 的新鲜烘焙 = 提交的 PNG（PSNR 门）、双胞胎片子互 PSNR ≥ 40 dB、`--res` 档真的出 480×270，以及 **render.sh 过真引擎**的端到端（引擎自己的横幅说 30fps · draft · 1 workers，held 卡把真片子读回来对账）。共 **139 项**断言，全部绿才许过。
+现在这一套还用桩钉住：render.sh **出片后的 held 回读卡**（要了 NVENC 文件却是 libx264、要 30 fps 文件却是 60——每个分支都驱动到）、`--fps 30 默认`（声明 60 → 渲 30，`--fps 60` 覆盖）、帧提取缓存落位、`render.mjs`/`render-split.sh` 的 `--res` 护栏（升采样拒、0.25 地板拒、`--dpr` 互斥）、lambda.sh 的参数映射与全部拒绝（桩引擎 + 桩 AWS 工具）。有 Chrome 的机器再跑**真**的：同一页面连烘两次必须同图（本平台参照，见 bake 一节的平台诚实条款）、双胞胎片子互 PSNR ≥ 40 dB（带本平台刚烘的 scene）、`--res` 档真的出 480×270，以及 **render.sh 过真引擎**的端到端（引擎自己的横幅说 30fps · draft · 1 workers，held 卡把真片子读回来对账）。共 **140 项**断言，全部绿才许过。
