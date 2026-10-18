@@ -348,16 +348,39 @@ E2E_OUT=$( (unset CHROME_PATH; cd "$TESTROOT" && PATH="$PATH" bash tools/kaggle/
 if echo "$E2E_OUT" | grep -q "no headless Chrome found"; then
   ok "the end-to-end split: skipped (no Chrome on this machine; the plan and the args are checked above)"
 else
+  # A borrowed CI host can wedge (a Chrome that stops answering makes the halves' wait unbounded). A
+  # budget turns that into a skip — the plan and the args are checked above — instead of a suite that
+  # hangs until the workflow's own timeout. A healthy macOS runner draws this film in ~380 s (Linux:
+  # ~30 s); the default budget is nearly twice the slow one. OVH_TEST_E2E_BUDGET overrides it (seconds).
+  E2E_BUDGET=${OVH_TEST_E2E_BUDGET:-720}
+  case "$E2E_BUDGET" in ''|*[!0-9]*) E2E_BUDGET=720 ;; esac
+  E2E_LOG="$WORK/e2e-run.log"
   T0=$(date +%s)
-  E2E_OUT=$( (unset CHROME_PATH; cd "$TESTROOT" && PATH="$PATH" bash tools/kaggle/render-split.sh "$E2E" --encoder x264 --tier draft) 2>&1); rc=$?
-  T1=$(date +%s)
-  chk "the split renders a real 32 s film (exit 0, took $((T1-T0)) s)" "$rc" "0"
-  echo "$E2E_OUT" | grep -q "determinism: the page must draw the same frame" && ok "the determinism gate ran before the halves" || bad "the determinism gate did not run: $(echo "$E2E_OUT" | head -3)"
-  echo "$E2E_OUT" | grep -q "cut      : frame 600 (t=20.000 s)" && ok "the real run cut on the 20 s scene cut" || bad "the real run cut elsewhere: $(echo "$E2E_OUT" | grep 'cut')"
-  echo "$E2E_OUT" | grep -q "960 frames in" && ok "the joined film has all 960 frames" || bad "joined frame count wrong: $(echo "$E2E_OUT" | tail -2)"
-  echo "$E2E_OUT" | grep -q "stream copy confirmed" && ok "the join was a stream copy (the halves' own bytes)" || bad "the join was not confirmed a stream copy: $(echo "$E2E_OUT" | grep -i 'copy\|suspicious')"
-  if [ -f "$E2E/renders/e2e.mp4.render.json" ]; then
-    python3 - "$E2E/renders/e2e.mp4.render.json" "$E2E/index.html" <<'PY' && ok "the sidecar says how the film was made, and its page resolves (bin/vh patch takes it from there)" || bad "the sidecar is wrong: $(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), ensure_ascii=False))" "$E2E/renders/e2e.mp4.render.json" 2>/dev/null | head -c 400)"
+  ( unset CHROME_PATH; cd "$TESTROOT" && exec bash tools/kaggle/render-split.sh "$E2E" --encoder x264 --tier draft ) >"$E2E_LOG" 2>&1 &
+  EP=$!
+  E2E_END=$((T0 + E2E_BUDGET))
+  while kill -0 "$EP" 2>/dev/null && [ "$(date +%s)" -lt "$E2E_END" ]; do sleep 2; done
+  if kill -0 "$EP" 2>/dev/null; then   # still going past the budget: a slow or wedged runner, not a verdict
+    kill -TERM "$EP" 2>/dev/null                      # its own stop handler takes the gate or the halves down
+    for _ in 1 2 3 4 5 6 7 8; do
+      kill -0 "$EP" 2>/dev/null || break; sleep 1
+    done
+    kill -KILL "$EP" 2>/dev/null || true
+    wait "$EP" 2>/dev/null
+    pkill -TERM -f "$E2E" 2>/dev/null; sleep 1; pkill -KILL -f "$E2E" 2>/dev/null   # anything the hammer orphaned
+    T1=$(date +%s)
+    ok "the end-to-end split: skipped (over the ${E2E_BUDGET} s budget after $((T1-T0)) s — a slow or wedged runner; the plan and the args are checked above)"
+  else
+    wait "$EP"; rc=$?
+    E2E_OUT=$(cat "$E2E_LOG")
+    T1=$(date +%s)
+    chk "the split renders a real 32 s film (exit 0, took $((T1-T0)) s)" "$rc" "0"
+    echo "$E2E_OUT" | grep -q "determinism: the page must draw the same frame" && ok "the determinism gate ran before the halves" || bad "the determinism gate did not run: $(echo "$E2E_OUT" | head -3)"
+    echo "$E2E_OUT" | grep -q "cut      : frame 600 (t=20.000 s)" && ok "the real run cut on the 20 s scene cut" || bad "the real run cut elsewhere: $(echo "$E2E_OUT" | grep 'cut')"
+    echo "$E2E_OUT" | grep -q "960 frames in" && ok "the joined film has all 960 frames" || bad "joined frame count wrong: $(echo "$E2E_OUT" | tail -2)"
+    echo "$E2E_OUT" | grep -q "stream copy confirmed" && ok "the join was a stream copy (the halves' own bytes)" || bad "the join was not confirmed a stream copy: $(echo "$E2E_OUT" | grep -i 'copy\|suspicious')"
+    if [ -f "$E2E/renders/e2e.mp4.render.json" ]; then
+      python3 - "$E2E/renders/e2e.mp4.render.json" "$E2E/index.html" <<'PY' && ok "the sidecar says how the film was made, and its page resolves (bin/vh patch takes it from there)" || bad "the sidecar is wrong: $(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), ensure_ascii=False))" "$E2E/renders/e2e.mp4.render.json" 2>/dev/null | head -c 400)"
 import json, os, sys
 d = json.load(open(sys.argv[1]))
 side = d.get("split", {})
@@ -376,27 +399,32 @@ if not ok:   # the diagnostics the bad() line above cannot reach (printed to std
              d.get("page"), os.path.exists(page), same, sys.argv[2]))
 sys.exit(0 if ok else 1)
 PY
-  else
-    bad "no sidecar was written beside the joined film"
-  fi
-  # a stop mid-render (E6): a stopped split takes its halves down and leaves nothing behind. TERM is used
-  # here — a Ctrl-C on a terminal reaches the whole foreground group, and this test signals the one pid;
-  # both arrive at the same stop_all trap
-  env -u CHROME_PATH PATH="$PATH" bash "$TESTROOT/tools/kaggle/render-split.sh" "$E2E" \
-    --encoder x264 --tier draft --out "$WORK/e2e-interrupted.mp4" >/dev/null 2>&1 &
-  SP=$!
-  sleep 4
-  if kill -TERM "$SP" 2>/dev/null; then
-    for _ in 1 2 3 4 5 6 7 8; do kill -0 "$SP" 2>/dev/null || break; sleep 1; done
-    if [ ! -e "$WORK/e2e-interrupted.mp4" ] && [ ! -d "$WORK/.e2e-interrupted.mp4.split" ]; then
-      ok "an interrupted split leaves no film and no halves behind (render.mjs's own stop handler ran in each)"
     else
-      bad "an interrupted split left its work behind: $(find "$WORK" -maxdepth 1 -name '.e2e-interrupted*' -printf '%f ' 2>/dev/null)"
+      bad "no sidecar was written beside the joined film"
     fi
-    kill -KILL "$SP" 2>/dev/null || true
-    pkill -f "e2e-interrupted" 2>/dev/null || true
-  else
-    ok "the interrupted-split check: skipped (the split had already finished)"
+    # a stop mid-render (E6): a stopped split takes its halves down and leaves nothing behind. TERM is used
+    # here — a Ctrl-C on a terminal reaches the whole foreground group, and this test signals the one pid;
+    # both arrive at the same stop_all trap. The wait for cmd-a.txt: on the macOS runners the determinism
+    # gate alone outlasts a blind 4 s, and a stop that lands before the halves begin proves nothing about them.
+    env -u CHROME_PATH PATH="$PATH" bash "$TESTROOT/tools/kaggle/render-split.sh" "$E2E" \
+      --encoder x264 --tier draft --out "$WORK/e2e-interrupted.mp4" >/dev/null 2>&1 &
+    SP=$!
+    I=0
+    while [ "$I" -lt 90 ] && kill -0 "$SP" 2>/dev/null && [ ! -e "$WORK/.e2e-interrupted.mp4.split/cmd-a.txt" ]; do
+      sleep 1; I=$((I + 1))
+    done
+    if kill -TERM "$SP" 2>/dev/null; then
+      for _ in 1 2 3 4 5 6 7 8; do kill -0 "$SP" 2>/dev/null || break; sleep 1; done
+      if [ ! -e "$WORK/e2e-interrupted.mp4" ] && [ ! -d "$WORK/.e2e-interrupted.mp4.split" ]; then
+        ok "an interrupted split leaves no film and no halves behind (render.mjs's own stop handler ran in each)"
+      else
+        bad "an interrupted split left its work behind: $(find "$WORK" -maxdepth 1 -name '.e2e-interrupted*' 2>/dev/null | tr '\n' ' ')"
+      fi
+      kill -KILL "$SP" 2>/dev/null || true
+      pkill -f "e2e-interrupted" 2>/dev/null || true
+    else
+      ok "the interrupted-split check: skipped (the split ended before the halves began)"
+    fi
   fi
 fi
 

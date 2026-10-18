@@ -221,11 +221,49 @@ if [ "$free_kb" -gt 0 ] && [ "$need_kb" -gt 0 ] && [ "$free_kb" -lt "$need_kb" ]
   exit 2
 fi
 
+# ── the stop machinery, in before the first phase it has to cover (E6) ──────────────────────────────────────────
+# A stop during the determinism gate must take the gate down too: the gate is a bin/vh child with its
+# own browser, and a trap that only knows the halves would orphan both. The gate therefore runs in the
+# background below — a foreground child would hold the trap until it finished on its own.
+PID_DET=""; PID_A=""; PID_B=""
+cleanup() { rm -rf "$WORK"; }
+kill_phase() { # kill_phase TERM|KILL — whichever of the gate and the halves is running (empty pids skipped)
+  for p in "$PID_DET" "$PID_A" "$PID_B"; do
+    if [ -n "$p" ]; then kill -"$1" "$p" 2>/dev/null || true; fi
+  done
+}
+phase_alive() {
+  for p in "$PID_DET" "$PID_A" "$PID_B"; do
+    if [ -n "$p" ] && kill -0 "$p" 2>/dev/null; then return 0; fi
+  done
+  return 1
+}
+stop_all() { # E6: a stopped split takes the gate or the halves down and leaves nothing behind
+  trap - INT TERM
+  kill_phase TERM                                    # the halves are the node processes (exec) and the gate is
+  for _ in 1 2 3 4 5; do                             # bin/vh: both stop cleanly on TERM (render.mjs deletes its
+    phase_alive || break                             # own chunks); give them 5 s before the hammer
+    sleep 1
+  done
+  kill_phase KILL
+  for p in "$PID_DET" "$PID_A" "$PID_B"; do
+    if [ -n "$p" ]; then wait "$p" 2>/dev/null || true; fi
+  done
+  printf '\033[31m✗\033[0m stopped — the split is deleted, gate and halves, no film was touched\n' >&2
+  cleanup
+  exit 130
+}
+trap stop_all INT TERM
+
 # ── the determinism gate: a page whose frames depend on the frames before them would draw differently halved ──
 # (after the dry run: a plan printout draws nothing, so it need not pay for the check)
 if [ "$SKIP_DET" = 0 ] && [ "$DRY" = 0 ] && [ -x "$ROOT/bin/vh" ]; then
   printf '\033[36m→\033[0m determinism: the page must draw the same frame whatever came before it (bin/vh determinism)\n'
-  if ! (cd "$PROJ" && "$ROOT/bin/vh" determinism . --samples 2 >/dev/null 2>&1); then
+  (cd "$PROJ" && exec "$ROOT/bin/vh" determinism . --samples 2) >/dev/null 2>&1 & PID_DET=$!
+  DET_RC=0
+  while kill -0 "$PID_DET" 2>/dev/null; do sleep 1; done
+  wait "$PID_DET" || DET_RC=$?
+  if [ "$DET_RC" -ne 0 ]; then
     printf '\033[31m✗\033[0m the page does not draw the same frame twice the same way: a split (or any re-render of a span)\n     would show it. Render the film whole (tools/kaggle/render.sh), or fix the page, or --skip-determinism to insist\n' >&2
     exit 1
   fi
@@ -252,23 +290,8 @@ if [ "$DRY" = 1 ]; then
   exit 0
 fi
 
-# ── both halves at once; Ctrl-C stops them and takes the work folder with it ───────────────────────────────────
+# ── both halves at once; the stop trap above covers this phase with the same hands ────────────────────────────
 rm -rf "$WORK"; mkdir -p "$WORK"
-cleanup() { rm -rf "$WORK"; }
-stop_all() { # E6: a stopped split takes its halves down and leaves nothing behind
-  trap - INT TERM EXIT
-  kill "$PID_A" "$PID_B" 2>/dev/null || true          # the halves are the node processes (exec): render.mjs's own stop
-  for _ in 1 2 3 4 5; do                               # handler deletes its chunks; give it 5 s before the hammer
-    kill -0 "$PID_A" 2>/dev/null || kill -0 "$PID_B" 2>/dev/null || break
-    sleep 1
-  done
-  kill -KILL "$PID_A" "$PID_B" 2>/dev/null || true
-  wait "$PID_A" 2>/dev/null || true; wait "$PID_B" 2>/dev/null || true
-  printf '\033[31m✗\033[0m stopped — the halves are deleted, no film was touched\n' >&2
-  cleanup
-  exit 130
-}
-trap stop_all INT TERM
 
 T0=$(date +%s)
 printf '\033[36m→\033[0m rendering both halves… (logs: %s/log-{a,b}.txt; another shell: tail -f them)\n' "$WORK"
