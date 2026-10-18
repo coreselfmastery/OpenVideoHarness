@@ -234,26 +234,45 @@ if [ "$NVENC" = 1 ]; then
   WRAPPER="$ROOT/.kaggle/ffmpeg-gpu.sh"
   cat > "$WRAPPER" <<WRAP
 #!/usr/bin/env bash
-# Written by tools/kaggle/setup.sh — HyperFrames' ffmpeg (HYPERFRAMES_FFMPEG_PATH points here). Every
-# call passes through untouched except an NVENC encode, which is pinned to GPU $NVENC_GPU: Chrome draws
-# on GPU 0, this encodes on GPU $NVENC_GPU, and neither waits on the other. -gpu is h264_nvenc's own
-# option (ffmpeg -h encoder=h264_nvenc); when the command line already carries it, nothing is added.
+# Written by tools/kaggle/setup.sh — HyperFrames' ffmpeg (HYPERFRAMES_FFMPEG_PATH points here). Two
+# jobs, and both only ever touch the engine's own render invocations (those never carry a -gpu of
+# their own; a command line that has one was written by hand and passes through untouched):
+#   1. every NVENC encode is pinned to GPU $NVENC_GPU: Chrome draws on GPU 0, this encodes on GPU
+#      $NVENC_GPU, and neither waits on the other. -gpu is h264_nvenc's own option
+#      (ffmpeg -h encoder=h264_nvenc).
+#   2. OVH_KAGGLE_TIER (exported by tools/kaggle/render.sh --tier) retunes the h264_nvenc the engine
+#      runs, replacing the -preset/-cq/-b:v it chose: draft → -preset p4 -cq 28 (fast to produce, good
+#      enough to judge), final → -preset p7 -cq 19 (the best Turing NVENC does; still many × realtime).
+#      The values the engine itself passes for these three options are swallowed; everything else
+#      (gop, colour tags, filters, streams) is kept as the engine wrote it. OVH_KAGGLE_TUNE=off turns
+#      the retuning off (the GPU pin stays).
 GPU=\${OVH_KAGGLE_NVENC_GPU:-$NVENC_GPU}
 REAL='$FF'
-has=0
-for a in "\$@"; do [ "\$a" = "-gpu" ] && has=1; done
-if [ "\$has" = 1 ]; then exec "\$REAL" "\$@"; fi
+TIER=\${OVH_KAGGLE_TIER:-}
+[ "\${OVH_KAGGLE_TUNE:-on}" = "off" ] && TIER=""
+for a in "\$@"; do [ "\$a" = "-gpu" ] && exec "\$REAL" "\$@"; done
 out=()
+tuned=0        # an h264_nvenc whose engine tuning the tier replaced: its -preset/-cq/-b:v go
+skip=0
 for a in "\$@"; do
-  out+=("\$a")
+  if [ "\$skip" = 1 ]; then skip=0; continue; fi
   case "\$a" in
-    h264_nvenc|hevc_nvenc|*=h264_nvenc|*=hevc_nvenc) out+=(-gpu "\$GPU") ;;
+    h264_nvenc|*=h264_nvenc)
+      out+=("\$a" -gpu "\$GPU")
+      case "\$TIER" in
+        draft) out+=(-preset p4 -cq 28); tuned=1 ;;
+        final) out+=(-preset p7 -cq 19); tuned=1 ;;
+      esac ;;
+    hevc_nvenc|*=hevc_nvenc) out+=("\$a" -gpu "\$GPU") ;;
+    -preset|-cq|-b:v)
+      if [ "\$tuned" = 1 ]; then skip=1; else out+=("\$a"); fi ;;
+    *) out+=("\$a") ;;
   esac
 done
 exec "\$REAL" "\${out[@]}"
 WRAP
   chmod +x "$WRAPPER"
-  ok "wrote the ffmpeg wrapper: NVENC encodes go to GPU $NVENC_GPU, everything else passes through"
+  ok "wrote the ffmpeg wrapper: NVENC encodes go to GPU $NVENC_GPU; --tier draft/final retunes them (OVH_KAGGLE_TUNE=off keeps the engine's own settings)"
 fi
 
 # The Node heap is only ever RAISED here (HyperFrames sizes workers against it, about 640 MB each plus

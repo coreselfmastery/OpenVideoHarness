@@ -1,8 +1,9 @@
 // patch: draw frames a–b of a film again and put them back, without rendering the rest. For a film made by bin/vh
-// render: its <film>.render.json says how (the page, fps, device pixel ratio, capture, x264 settings) and its keyframes
+// render: its <film>.render.json says how (the page, fps, device pixel ratio, capture, encoder settings) and its keyframes
 // fall every --gop frames, so the video can be cut on them. The frames from the keyframe at or before a up to the next
-// keyframe after b are rendered again with the same settings (tools/film/render.mjs --frames), the film's packets before
-// and after are copied as they are, the three are joined, and the film's other tracks (sound, subtitles) go back on.
+// keyframe after b are rendered again with the same settings (tools/film/render.mjs --frames — an nvenc film on nvenc
+// again, its --gpu with it), the film's packets before and after are copied as they are, the three are joined, and the
+// film's other tracks (sound, subtitles) go back on.
 //
 // usage: node tools/film/patch.mjs <film.mp4> --browser <chrome> (--frames a-b | --seconds s-e) [--sidecar f.render.json]
 //          [--page film.html] [--out f.mp4] [--in-place] [--workers 4] [--verify seams|full] [--min-psnr 40] [--keep]
@@ -153,6 +154,7 @@ const piece = path.join(work, "piece.mp4");
 const capture = String(side.capture || "jpeg q95"), q = capture.match(/jpeg q(\d+)/);
 const rargs = [path.join(HERE, "render.mjs"), page, "--browser", browser, "--frames", `${k0}:${k1}`, "--fps", String(fps), "--dpr", String(side.dpr || 1),
   "--crf", String(enc.crf), "--preset", String(enc.preset), "--gop", String(gop), "--workers", String(o.workers), "--out", piece,
+  ...(enc.codec === "h264_nvenc" ? ["--encoder", "nvenc", "--gpu", String(enc.gpu ?? 0)] : []),
   ...(capture === "png" ? ["--png"] : ["--quality", q ? q[1] : "95"]), ...(side.real_clock ? ["--real-clock"] : []), ...(side.soft_gl ? ["--soft-gl"] : []), ...(side.kind === "hyperframes" ? ["--force"] : [])];
 const T0 = Date.now();
 const code = await new Promise((ok) => {
@@ -173,7 +175,7 @@ const ps = streams(piece).find((s) => s.codec_type === "video");
 const failures = [];
 if (ps.extradata_hash !== v.extradata_hash || ps.width !== v.width || ps.height !== v.height || ps.pix_fmt !== v.pix_fmt || ps.profile !== v.profile || ps.level !== v.level)
   die(`the new frames' encoder setup is not the film's (SPS/PPS ${ps.extradata_hash === v.extradata_hash ? "same" : "differ"}, ${ps.profile}/${ps.level} vs ${v.profile}/${v.level}): ` +
-    "another x264 or other settings; joining them would make a broken film. Render the film again instead", 1);
+    `another ${v.codec_name === "h264_nvenc" ? "NVENC session (driver or ffmpeg changed?)" : "x264 or other settings"}; joining them would make a broken film. Render the film again instead`, 1);
 
 // ---- cut the film on its keyframes, join the three, put the other tracks back ----
 const ff = (args, what) => {

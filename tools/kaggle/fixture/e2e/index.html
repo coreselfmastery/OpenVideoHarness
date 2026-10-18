@@ -1,0 +1,33 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=320, height=180">
+<style>html, body { margin: 0; background: #000; } canvas { display: block; }</style>
+</head>
+<body>
+<canvas id="c" width="320" height="180"></canvas>
+<div data-composition-id="e2e" data-duration="32" data-fps="30" data-width="320" data-height="180">
+  <div class="clip" data-start="0" data-duration="10"></div>
+  <div class="clip" data-start="10" data-duration="10"></div>
+  <div class="clip" data-start="20" data-duration="12"></div>
+</div>
+<script>
+  // an end-to-end fixture for tools/kaggle/render-split.sh: a page-contract page (engines/CONTRACT.md) whose
+  // index.html also carries the composition metadata the split plan reads (data-composition-id, data-duration,
+  // data-fps, and the data-start scene cuts). Deterministic: every frame is a pure function of t.
+  const c = document.getElementById("c"), x = c.getContext("2d");
+  window.film = {
+    duration: 32,
+    load() { return document.fonts.ready; },
+    frame(t) {
+      x.fillStyle = `hsl(${Math.round(t * 40) % 360}, 55%, 25%)`; x.fillRect(0, 0, 320, 180);
+      x.fillStyle = "#fc0"; x.fillRect(20 + ((t * 40) % 280), 70, 40, 40);
+      x.fillStyle = "#fff"; x.font = "16px sans-serif"; x.fillText(t.toFixed(2) + " s", 12, 24);
+      if (t >= 10) { x.fillStyle = "#0cf"; x.fillRect(60, 120, 60, 12); }
+      if (t >= 20) { x.fillStyle = "#f6c"; x.fillRect(200, 120, 60, 12); }
+    },
+  };
+</script>
+</body>
+</html>
