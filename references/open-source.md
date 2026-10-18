@@ -98,7 +98,8 @@ ClaudeAnimationBase 在 `engines/` 下，依赖已装好。清单里的其他项
 | [digitalsamba/claude-code-video-toolkit](https://github.com/digitalsamba/claude-code-video-toolkit) | `/setup`、`/video` 命令加模板；TTS、图像、音乐模型部署在自己的云 GPU | 2.1k / 2026-09 | MIT | A |
 | [geekjourneyx/hyperframes-motion-director](https://github.com/geekjourneyx/hyperframes-motion-director) | 中文优先的 HyperFrames 动效 skill | 0.45k / 2026-07 | AGPL-3.0 | A |
 | [iart-ai/motion-skills](https://github.com/iart-ai/motion-skills) | 动效和 kinetic typography skills | 0.5k | MIT | A |
-| [ahujasid/mcp-for-blender](https://github.com/ahujasid/mcp-for-blender) | 用 LLM 控制 Blender（原 blender-mcp） | 29.5k / 2026-09 | MIT | B |
+| [carlosh7/blender-mcp](https://github.com/carlosh7/blender-mcp) | blender-mcp-ultra：248 工具的 Blender MCP（token 认证 + AST 双侧拦截，headless 可用）；本仓库 Blender 引擎探索阶段的推荐，专页 `engines/blender-mcp-ultra.md` | 13 / 2026-08 | MIT | A- |
+| [ahujasid/mcp-for-blender](https://github.com/ahujasid/mcp-for-blender) | 用 LLM 控制 Blender（原 blender-mcp）；无认证 socket + 裸 exec，仅作对照 | 29.5k / 2026-09 | MIT | B |
 | [samuelgursky/davinci-resolve-mcp](https://github.com/samuelgursky/davinci-resolve-mcp) | DaVinci Resolve MCP（需 Studio 版） | 3.2k / 2026-09 | MIT | B |
 | [GuanYixuan/pyJianYingDraft](https://github.com/GuanYixuan/pyJianYingDraft) | Python 生成剪映草稿，出草稿后手动精修 | 4.5k / 2026-09 | Apache-2.0 | A |
 

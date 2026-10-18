@@ -21,7 +21,7 @@
 | **ManimGX** | Python 场景类（CE 的 API，Rust/wgpu GPU 核） | 公式、几何、坐标系精确；LLM 语料多（就是 CE 的 API）；`self.say` 能按词触发动画；内置 Typst 排公式，不装 LaTeX | 不适合排版密集或 UI 类画面；无 GPU 时落到 CPU（lavapipe），仍比 CE 快 | 数学、物理、算法、论文机制讲解 |
 | **p5.js + p5.brush**（ClaudeAnimationBase） | JS，每帧 `renderAt(t)` | 手绘、水彩、墨线质感；有现成角色和完整动画规范；仓库自带 | 纯 2D；没有 GPU 时水彩渲染慢（Apple Silicon 实测约 0.13 秒/帧） | 角色短片、手绘 MV、叙事型科普 |
 | **自定义 WebGL/Canvas** | JS | 可做任意画风，例如 functional-emotions 的 6 万笔触渲染器 | 要从头搭 | 有明确风格追求的 MV |
-| **Blender**（MCP 或 `blender -b` 脚本） | Python bpy | 真 3D、光照、物理 | 渲染慢；MCP 会直接执行 LLM 生成的代码 | 3D 产品展示、空间场景 |
+| **Blender**（MCP 探索 + `blender -b` 脚本管线） | Python bpy | 真 3D、光照、物理 | 渲染慢；MCP 直接执行 LLM 代码（探索专用：ultra 版带 token + AST 拦截，见 `engines/blender-mcp-ultra.md`） | 3D 产品展示、空间场景 |
 | **生成式视频 + 代码叠加** | 调 API，再写叠加层 | 写实人物和物理效果 | 花钱多；跨镜头角色一致性差；结果不确定 | 见 `05-hybrid-genvideo.md` |
 
 【综合】默认选法：

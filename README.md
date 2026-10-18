@@ -186,7 +186,7 @@ Some shots are beyond a web engine: refracting glass, volumetric light, real dep
 
 <p align="center"><img src="docs/assets/blender-strip.jpg" width="820" alt="Moments from the intro film's opening, all rendered in Blender: the Earth in a glass card, the pull-back to a galaxy, the burst, the flattened sea of films"></p>
 
-The intro film's opening was made this way: a galaxy of 1.18 million stars, 15.8 s and 475 frames, 1 h 28 min at 1080p on an M3 Max. The scripts run sandboxed, with no network and no access to your API keys, and long renders go in resumable chunks. When Blender is worth it, how to join it to a film and what went wrong along the way: [engines/blender.md](engines/blender.md) (in Chinese).
+The intro film's opening was made this way: a galaxy of 1.18 million stars, 15.8 s and 475 frames, 1 h 28 min at 1080p on an M3 Max. The scripts run sandboxed, with no network and no access to your API keys, and long renders go in resumable chunks. When Blender is worth it, how to join it to a film and what went wrong along the way: [engines/blender.md](engines/blender.md) (in Chinese). For the exploration phase there is also an MCP path — `blender-mcp-ultra`, 248 tools, token-authenticated and AST-guarded, kept out of the pipeline by rule: [engines/blender-mcp-ultra.md](engines/blender-mcp-ultra.md) (in Chinese), one-command setup and proof: `tools/blender_mcp_setup.sh`.
 
 ## Sound
 
