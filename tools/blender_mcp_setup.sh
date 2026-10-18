@@ -30,13 +30,15 @@ info() { printf '[--] %s\n' "$*"; }
 mode=check
 BLENDER=""
 ADDON_FROM=""
+PERF=""
 while [ $# -gt 0 ]; do
   case "$1" in
     --check) mode=check ;;
     --headless) mode=headless ;;
     --blender) shift; BLENDER="${1:-}" ;;
     --addon-from) shift; ADDON_FROM="${1:-}" ;;
-    *) bad "unknown flag: $1"; say "usage: tools/blender_mcp_setup.sh [--check] [--headless] [--blender PATH] [--addon-from PATH]"; exit 2 ;;
+    --perf) shift; PERF="${1:-}" ;;
+    *) bad "unknown flag: $1"; say "usage: tools/blender_mcp_setup.sh [--check] [--headless] [--blender PATH] [--addon-from PATH] [--perf draft]"; exit 2 ;;
   esac
   shift
 done
@@ -189,9 +191,25 @@ fi
 
 # --- 7. headless server on :9894 (not :9876 — never disturb a running session) -----
 PORT=9894
+if [ -n "$PERF" ]; then
+  case "$PERF" in
+    draft|final|final-cpu|fast|cpu|deterministic) ;;
+    *) bad "--perf is draft | final | final-cpu, not $PERF"; exit 2 ;;
+  esac
+  PERF_BLOCK="import bpy
+from tools.blender_perf import apply_profile
+dev, _rows = apply_profile(bpy.context.scene, '$PERF')
+print('[perf] exploration scene defaults: $PERF profile ->', dev, flush=True)
+"
+  ok "perf profile $PERF will be applied to the session scene before the server starts"
+else
+  PERF_BLOCK=""
+fi
 cat > "$TMP/server.py" <<PY
 import sys
 sys.path.insert(0, "$ADDON_FROM/addon")
+sys.path.insert(0, "$PWD")
+$PERF_BLOCK
 import _axsock
 _axsock.serve_forever(host="127.0.0.1", port=$PORT)
 PY
