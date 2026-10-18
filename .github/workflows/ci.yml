@@ -20,7 +20,9 @@ jobs:
   checks:
     name: checks (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 15
+    # the kaggle group's end-to-end split renders a real 32 s film through Chrome: about a minute on
+    # Linux, 6–8 min on the macOS runners (ARM Chrome draws it slower), on top of the rest of the suite
+    timeout-minutes: 25
     strategy:
       fail-fast: false
       matrix:
