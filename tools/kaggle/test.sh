@@ -357,15 +357,23 @@ else
   echo "$E2E_OUT" | grep -q "960 frames in" && ok "the joined film has all 960 frames" || bad "joined frame count wrong: $(echo "$E2E_OUT" | tail -2)"
   echo "$E2E_OUT" | grep -q "stream copy confirmed" && ok "the join was a stream copy (the halves' own bytes)" || bad "the join was not confirmed a stream copy: $(echo "$E2E_OUT" | grep -i 'copy\|suspicious')"
   if [ -f "$E2E/renders/e2e.mp4.render.json" ]; then
-    python3 - "$E2E/renders/e2e.mp4.render.json" "$E2E/index.html" <<'PY' && ok "the sidecar says how the film was made, and its page resolves (bin/vh patch takes it from there)" || bad "the sidecar is wrong"
+    python3 - "$E2E/renders/e2e.mp4.render.json" "$E2E/index.html" <<'PY' && ok "the sidecar says how the film was made, and its page resolves (bin/vh patch takes it from there)" || bad "the sidecar is wrong: $(python3 -c "import json,sys; print(json.dumps(json.load(open(sys.argv[1])), ensure_ascii=False))" "$E2E/renders/e2e.mp4.render.json" 2>/dev/null | head -c 400)"
 import json, os, sys
 d = json.load(open(sys.argv[1]))
 side = d.get("split", {})
+page = os.path.join(os.path.dirname(sys.argv[1]), d["page"])
+try:
+    same = os.path.samefile(page, sys.argv[2])
+except OSError:
+    same = False
 ok = (d["frames"] == 960 and d["first_frame"] == 0 and d["span"] == [0.0, 32.0]
       and side.get("seam_frame") == 600 and side.get("halves") == [600, 360]
       and d["encoder"]["codec"] == "libx264" and d["encoder"]["crf"] == 28
-      and os.path.exists(os.path.join(os.path.dirname(sys.argv[1]), d["page"]))
-      and os.path.samefile(os.path.join(os.path.dirname(sys.argv[1]), d["page"]), sys.argv[2]))
+      and os.path.exists(page) and same)
+if not ok:   # the diagnostics the bad() line above cannot reach (printed to stdout, shown by CI)
+    print("SIDECAR-DIAG: frames=%r first_frame=%r span=%r seam=%r halves=%r enc=%r page=%r exists=%r same=%r argv2=%r"
+          % (d.get("frames"), d.get("first_frame"), d.get("span"), side, d.get("encoder"),
+             d.get("page"), os.path.exists(page), same, sys.argv[2]))
 sys.exit(0 if ok else 1)
 PY
   else
