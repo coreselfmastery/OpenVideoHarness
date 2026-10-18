@@ -14,7 +14,7 @@
 #                         retune the h264_nvenc the engine runs. Without --tier the engine's own
 #                         --quality mapping stands (x264-equivalent presets) and NVENC is not retuned
 #     --workers N         override the worker policy below
-#     --fps N             override the fps policy below
+#     --fps N             override the fps policy below (a film written at 60 keeps its frames only with it)
 #     --no-gpu            encode on the CPU (libx264) even though setup.sh found NVENC
 #     --no-fast-capture   render through screenshots, not the drawElement fast capture
 #     --detach            run in the background (HYPERFRAMES_RENDER_DETACHED=1); the log path, the pid
@@ -23,13 +23,19 @@
 #   Examples:
 #     tools/kaggle/render.sh projects/26-launch --tier draft              # review pass (fast)
 #     tools/kaggle/render.sh projects/26-launch --tier final              # the master
-#     tools/kaggle/render.sh projects/26-launch --quality draft --resolution 4k
+#     tools/kaggle/render.sh projects/26-launch --quality draft --output-resolution 4k
+#     tools/kaggle/render.sh projects/26-launch --fps 60                  # a 60 fps film keeps its 60
 #
 # The policies (each one is a measured trap in HyperFrames 0.8.82 — engines/README.md's HyperFrames
 # section and tools/kaggle/README.md have the numbers):
-#   fps       the composition's own data-fps is kept when it is 30 or less (a film written at 24 stays
-#             24); 30 when it asks for nothing; when it asks for more than 30 a notice is printed and
-#             its choice is kept — add --fps 30 yourself if the film's spec allows halving the frames.
+#   fps       30 is the default, the single biggest speed lever (about half the frames of 60). The
+#             composition's own data-fps is kept when it is 30 or less (a film written at 24 stays 24);
+#             when it declares more than 30 this script still renders 30 and says so — pass --fps to
+#             keep every frame of a 60 fps spec. After the render the film itself is read back (ffprobe)
+#             and the fps, the size, the frame count and the encoder it actually came out with are
+#             checked against what was asked: a flag asked for is not a flag applied, and the card
+#             says which one held and which fell back (the size is checked too, unless the caller's
+#             own --output-resolution / --width / --height passed through and changed it).
 #   workers   under 240 s: 1 (a single worker keeps the streaming encode; multi-worker short films
 #             buffer every frame to disk first). 240 s and up: HyperFrames auto — with the fast capture
 #             that is the parallel router's 3 workers, and an explicit --workers here would switch the
@@ -49,13 +55,16 @@
 #   streaming the engine's streaming encode has a duration cap that, when anything enables it, silently
 #             switches a long film to disk-buffered capture (the slow path). This script always sets the
 #             cap above the film's own length, so streaming cannot be switched off under it.
+#   cache     HYPERFRAMES_EXTRACT_CACHE_DIR is pointed into the project (renders/.hf-extract-cache), so
+#             a composition with <video> sources extracts its frames once and a re-render — next session
+#             included, on Kaggle — reuses them instead of slicing the same videos again.
 set -euo pipefail
 unset CDPATH
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 case "${1:-}" in
-  -h|--help) sed -n '2,47p' "$0"; exit 0 ;;
-  "") sed -n '2,47p' "$0" >&2; exit 1 ;;
+  -h|--help) sed -n '2,58p' "$0"; exit 0 ;;
+  "") sed -n '2,58p' "$0" >&2; exit 1 ;;
 esac
 PROJ=$1; shift
 case "$PROJ" in
@@ -84,7 +93,7 @@ while [ $# -gt 0 ]; do
     --fps) FPS_OPT=${2:?--fps needs a number}; shift ;;
     --fps=*) FPS_OPT=${1#*=} ;;
     -f) FPS_OPT=${2:?-f needs a number}; shift ;;
-    -h|--help) sed -n '2,47p' "$0"; exit 0 ;;
+    -h|--help) sed -n '2,58p' "$0"; exit 0 ;;
     *) pass+=("$1") ;;
   esac
   shift
@@ -128,17 +137,19 @@ DFPS=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.st
 PW=$(printf '%s' "$meta" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["w"] or 1920)')
 PH=$(printf '%s' "$meta" | python3 -c 'import json,sys; d=json.load(sys.stdin); print(d["h"] or 1080)')
 
-flags=(); fps_note=""; workers_note=""
+flags=(); fps_note=""; workers_note=""; want_fps=""; want_size=""
 
 # ── fps ─────────────────────────────────────────────────────────────────────────────────────────
 if [ -n "$FPS_OPT" ]; then
-  flags+=(--fps "$FPS_OPT"); fps_note="fps $FPS_OPT (yours)"
+  flags+=(--fps "$FPS_OPT"); fps_note="fps $FPS_OPT (yours)"; want_fps=$FPS_OPT
 elif [ -z "$DFPS" ]; then
-  flags+=(--fps 30); fps_note="fps 30 (no data-fps; HyperFrames' own default, made explicit)"
+  flags+=(--fps 30); fps_note="fps 30 (no data-fps; HyperFrames' own default, made explicit)"; want_fps=30
 elif awk -v d="$DFPS" 'BEGIN{exit !(d<=30)}'; then
-  fps_note="fps $DFPS (the composition's own; kept, it is 30 or less)"
+  fps_note="fps $DFPS (the composition's own; kept, it is 30 or less)"; want_fps=$DFPS
 else
-  fps_note="fps $DFPS (the composition asks for it; add --fps 30 to halve the frames if the film's spec allows)"
+  flags+=(--fps 30)
+  fps_note="fps 30 (the default here; the composition declares $DFPS — pass --fps $DFPS to keep every frame of it)"
+  want_fps=30
 fi
 
 # ── workers ─────────────────────────────────────────────────────────────────────────────────────
@@ -270,6 +281,13 @@ PY
   fi
 fi
 
+# what the film should come out as, for the read-back card below — the size only while nothing that
+# passes through to the engine changes it (--output-resolution supersamples, --width/--height set it)
+want_size="${PW}x${PH}"
+for a in ${pass[@]+"${pass[@]}"}; do
+  case "$a" in --output-resolution|--output-resolution=*|--width|--width=*|--height|--height=*) want_size="" ;; esac
+done
+
 # ── streaming cap: always above the film's own length (C6/D7) ───────────────────────────────────
 stream_note=""
 if [ -n "$DUR" ]; then
@@ -326,6 +344,12 @@ if [ -n "$DUR" ] && awk -v d="$DUR" 'BEGIN{exit !(d>=240)}' && [ "${OVH_KAGGLE_G
 fi
 printf '\033[36m→\033[0m command  : %s\n' "$(printf '%s ' "${cmd[@]}" render . ${flags[@]+"${flags[@]}"} ${pass[@]+"${pass[@]}"})"
 
+# the engine's extracted-frame cache (<video> sources) into the project: a re-render reuses the slices
+# (renders/ is bin/vh clean's own territory, so a finished project takes the cache with it)
+if [ -z "${HYPERFRAMES_EXTRACT_CACHE_DIR:-}" ]; then
+  export HYPERFRAMES_EXTRACT_CACHE_DIR="$PROJ/renders/.hf-extract-cache"
+fi
+
 cd "$PROJ"
 if [ "$DETACH" = 1 ]; then
   mkdir -p out renders
@@ -340,5 +364,80 @@ if [ "$DETACH" = 1 ]; then
   printf '  watch : tail -f %s\n' "$log"
   printf '  stop  : kill %s   (or: kill $(cat %s))\n' "$pid" "$PROJ/out/render.pid"
 else
-  exec "${cmd[@]}" render . ${flags[@]+"${flags[@]}"} ${pass[@]+"${pass[@]}"}   # signals go straight to it (Ctrl-C is its own clean stop)
+  # a child, not an exec, so the film it leaves can be read back afterwards; the traps keep what the exec
+  # gave: a signal addressed to this shell reaches the engine too (a terminal Ctrl-C hits both anyway —
+  # the engine is in this shell's process group)
+  # the moment the render begins, one second back (python: date -r FILE is BSD-only, date -d @N GNU-only) —
+  # the film is read back by "newer than this", so a previous render's MP4 is never mistaken for this one's
+  MSTART=$(python3 -c "import time; print(time.strftime('%Y-%m-%d %H:%M:%S', time.localtime(time.time()-1)))")
+  "${cmd[@]}" render . ${flags[@]+"${flags[@]}"} ${pass[@]+"${pass[@]}"} &
+  RPID=$!
+  trap 'kill -TERM "$RPID" 2>/dev/null || true' TERM
+  trap 'kill -INT  "$RPID" 2>/dev/null || true' INT
+  RRC=0
+  wait "$RPID" 2>/dev/null || RRC=$?
+  while kill -0 "$RPID" 2>/dev/null; do wait "$RPID" 2>/dev/null || RRC=$?; done
+  trap - TERM INT
+  [ "$RRC" -eq 0 ] || exit "$RRC"
+  # ── what the film itself says: the flags were requests, this is what came out ───────────────
+  # (ffprobe on the newest MP4 under renders/ younger than the render — the engine's default output;
+  # an -o or --format render puts its file elsewhere, and the card says so instead of guessing)
+  card=""
+  film=""
+  if command -v ffprobe >/dev/null 2>&1 && [ -d "$PROJ/renders" ]; then
+    while IFS= read -r f; do
+      [ -f "$f" ] || continue
+      if [ -z "$film" ] || [ "$f" -nt "$film" ]; then film=$f; fi
+    done < <(find "$PROJ/renders" -maxdepth 1 -name '*.mp4' -newermt "${MSTART:-1970-01-01 00:00:00}" 2>/dev/null || true)
+  fi
+  if [ -n "$film" ]; then
+    got=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -of json "$film" 2>/dev/null || true)
+    card=$(python3 - "$film" "${OVH_KAGGLE_NVENC:-0}" "$NO_GPU" "$want_fps" "$want_size" "$got" <<'PY'
+import json, sys
+film, nvenc, no_gpu, want_fps, want_size, raw = sys.argv[1:7]
+try: streams = json.loads(raw or "{}").get("streams") or [{}]
+except Exception: streams = [{}]
+st = streams[0] or {}
+if not st.get("codec_name"):
+    print("unreadable: " + film); sys.exit(0)
+rate = str(st.get("avg_frame_rate", "?"))
+try:
+    a, b = rate.split("/"); fps = int(a) / int(b)
+except Exception:
+    fps = None
+codec, w, h, n = st.get("codec_name"), st.get("width"), st.get("height"), st.get("nb_frames")
+fpss = str(round(fps, 2)).rstrip("0").rstrip(".") if fps is not None else rate
+bits = "%s frames, %sx%s, %s fps, %s" % (n, w, h, fpss, codec)
+miss = []                                   # every ask the file did not meet, in one honest line
+if nvenc == "1" and no_gpu == "0":
+    if codec == "h264_nvenc": held = "the --gpu flag held: the file itself says h264_nvenc"
+    else:
+        held = ""
+        miss.append("NVENC was asked for, the file came out %s (the engine fell back — its log above says why)" % codec)
+elif codec in ("libx264", "h264", "h264_nvenc"):
+    held = "the encode came out %s, as planned" % codec
+else:
+    held = "the encode came out %s" % codec
+if want_fps and fps is not None and abs(fps - float(want_fps)) > 0.1:
+    miss.append("asked %s fps, the file says %s" % (want_fps, fpss))
+if want_size and "%sx%s" % (w, h) != want_size:
+    miss.append("the composition is %s, the file says %sx%s" % (want_size, w, h))
+if miss:
+    print("warn: %s — %s" % (bits, "; ".join(miss)))
+elif held:
+    print("ok: %s — %s" % (bits, held))
+else:
+    print("ok: %s" % bits)
+PY
+)
+  elif command -v ffprobe >/dev/null 2>&1; then
+    card="no-new-mp4"
+  fi
+  case "$card" in
+    ok:*)    printf '\033[32m✓\033[0m held     : %s\n' "${card#ok: }" ;;
+    warn:*)  printf '\033[33m!\033[0m held     : %s\n' "${card#warn: }" ;;
+    no-new-mp4) printf '\033[36m→\033[0m held     : no new MP4 under renders/ (an -o or --format render?) — the flags above were the request\n' ;;
+    unreadable:*) printf '\033[36m→\033[0m held     : (could not read the film back: %s)\n' "${card#unreadable: }" ;;
+    "")  : ;;   # no ffprobe: the engine's own banner is the report
+  esac
 fi

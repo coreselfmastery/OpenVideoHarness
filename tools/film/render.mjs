@@ -5,14 +5,19 @@
 // nvenc for an NVIDIA card). The chunks are joined without re-encoding. Video only: put the sound on with bin/vh mux.
 //
 // usage: node tools/film/render.mjs <project | page.html> --browser <chrome> [--out out/film.mp4] [--fps 30]
-//          [--range a:b | --frames k0:k1] [--dpr 1] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png] [--quality 95]
-//          [--frame-timeout 120] [--force] [--real-clock] [--soft-gl] [--encoder x264|nvenc] [--gpu 0]
+//          [--range a:b | --frames k0:k1] [--dpr 1] [--res 720p] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png]
+//          [--quality 95] [--frame-timeout 120] [--force] [--real-clock] [--soft-gl] [--encoder x264|nvenc] [--gpu 0]
 //        (bin/vh render finds the browser: CHROME_PATH, HyperFrames' chrome-headless-shell, then Chrome or Chromium)
 //
 //   --out          default <project>/out/<page>.mp4; a lock file beside it stops a second render of the same file
 //   --range a:b    only that span (frames a·fps up to b·fps); default the whole film
 //   --frames k0:k1 only frames k0 up to k1 (k1 left out), frame k drawn at k / fps: exact, for bin/vh patch
 //   --dpr 2        twice the pixels (4K for a 1920x1080 page)
+//   --res 720p     the same page at a lower tier: the output's short side in lines (480p, 540p, 720p, 1080p —
+//                  720 means 1280x720 for a landscape page, 720x1280 for a portrait one). The page keeps its
+//                  own layout: Chrome draws it at a fractional deviceScaleFactor, so a 480p or 720p draft of a
+//                  1080p film is the same picture at 20% / 44% of the pixels (a draft round drawn several times
+//                  faster); the master is still the full-size render. It sets --dpr, and the two conflict
 //   --gop 60       a keyframe every 60 frames exactly, from the span's first frame (default 2 s of frames); the chunks
 //                  are whole GOPs, so a later patch can cut the video on keyframes
 //   --png          lossless frames into the encoder (slower, larger pipes); default JPEG at --quality 95
@@ -36,7 +41,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { spawn, spawnSync } from "node:child_process";
-import { openFilm } from "./host.mjs";
+import { findPage, openFilm, readPage } from "./host.mjs";
 import { HOOK, check as checkGlyphs, collectDom, merge as mergeGlyphs, report as glyphReport } from "./glyphs.mjs";
 
 process.stdout.on("error", (e) => { if (e.code !== "EPIPE") throw e; });
@@ -45,6 +50,7 @@ const argv = process.argv.slice(2);
 if (!argv.length || argv.includes("-h") || argv.includes("--help")) { process.stdout.write(HELP.trimEnd() + "\n"); process.exit(argv.length ? 0 : 2); }
 const die = (msg) => { console.error("render: " + msg); process.exit(2); };
 const o = { fps: 30, dpr: 1, workers: 4, crf: 16, preset: "medium", quality: 95, frameTimeout: 120, encoder: "x264", gpu: 0 };
+let res = null, dprSet = false;
 const NVENC_PRESETS = { ultrafast: "p1", superfast: "p1", veryfast: "p2", faster: "p3", fast: "p4", medium: "p4", slow: "p5", slower: "p6", veryslow: "p7", placebo: "p7" };
 let target = null, out = null, range = null, frames = null, gop = null, png = false, force = false;
 for (let i = 0; i < argv.length; i++) {
@@ -55,7 +61,8 @@ for (let i = 0; i < argv.length; i++) {
   else if (k === "--range") { range = val().split(":").map((v) => num(v, "--range", 0)); if (range.length !== 2 || range[1] <= range[0]) die("--range a:b, b > a"); }
   else if (k === "--frames") { frames = val().split(":").map((v) => num(v, "--frames", 0)); if (frames.length !== 2 || !frames.every(Number.isInteger) || frames[1] <= frames[0]) die("--frames k0:k1, whole frame numbers, k1 > k0"); }
   else if (k === "--fps") o.fps = num(val(), k, 1);
-  else if (k === "--dpr") o.dpr = num(val(), k, 0.25);
+  else if (k === "--dpr") { o.dpr = num(val(), k, 0.25); dprSet = true; }
+  else if (k === "--res") res = val();
   else if (k === "--workers") o.workers = Math.floor(num(val(), k, 1));
   else if (k === "--crf") o.crf = num(val(), k, 0);
   else if (k === "--preset") o.preset = val();
@@ -75,6 +82,18 @@ for (let i = 0; i < argv.length; i++) {
 }
 if (!target) die("which project or page? (-h for the usage)");
 if (range && frames) die("--range or --frames, not both");
+if (res !== null && dprSet) die("--res or --dpr, not both (--res names the tier, --dpr the exact factor)");
+if (res !== null) {   // the tier: the short side of the video in lines, the page's own layout kept
+  const m = String(res).match(/^(\d+)p?$/);
+  if (!m) die(`--res: the short side in lines, like 480p, 720 or 1080p — not ${JSON.stringify(res)}`);
+  const lines = +m[1];
+  const info = readPage(findPage(target));
+  const short = Math.min(info.width || 1920, info.height || 1080);
+  const dpr = lines / short;
+  if (dpr < 0.25) die(`--res ${m[1]}p on a ${info.width}x${info.height} page is dpr ${dpr.toFixed(3)}: under the 0.25 floor (a 1080p page bottoms out at ${Math.ceil(short * 0.25)}p)`);
+  if (dpr > 1.0001) die(`--res ${m[1]}p on a ${info.width}x${info.height} page is dpr ${dpr.toFixed(3)}: more pixels than the page has (--res names a draft tier, fewer pixels; --dpr is the exact factor, and the engine's --output-resolution is the supersampler)`);
+  o.dpr = dpr;
+}
 if (out && fs.existsSync(out) && fs.statSync(out).isDirectory()) die(`--out ${out} is a folder: name the video file (…/film.mp4)`);
 if (out && !/\.(mp4|mov)$/i.test(out)) die(`--out ${out}: the video file, .mp4 (or .mov)`);
 if (!o.browser) die("no browser: pass --browser <chrome>, or run it as bin/vh render");

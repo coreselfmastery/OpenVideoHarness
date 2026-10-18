@@ -103,7 +103,7 @@ HF_CAPTURE_PARALLEL_STREAM=true NODE_OPTIONS=--max-old-space-size=8192 npx hyper
 
 码率和耗时随画面差很多：这支 canvas 片子的 4K 约 26 Mbps，渲 1 s 片长约 1.4 s；上面的介绍片（3D）约 125 Mbps，要 5–8 s。所以上面"超过约 135 s 的 4K 要先重编码"是按介绍片的码率算的，自己的片子先量再定。
 
-**在 Kaggle 的 2×T4（或任何 Linux GPU 机器）上渲染**：`tools/kaggle/setup.sh` 一次把环境探好、缓存好（Node ≥ 22、带 NVENC 的 ffmpeg、Chrome、浏览器 GPU 和逐卡 NVENC 探测），`tools/kaggle/render.sh <项目> [--tier draft|final]` 按上面这些规则选 fps、worker、捕获路径和编码器——Chrome 用 GPU 0，NVENC 编码钉在 GPU 1（`--tier` 连 NVENC 的 preset/cq 一起按评审/交片调好），短片自动单 worker 保住流式编码，长片把 worker 留给 auto 让并行快速捕获路由接手。≥ 30 s 的长片还可以 `tools/kaggle/render-split.sh <项目>`：两半同时画、两块卡各跑一个 NVENC、stream copy 拼接，墙钟时间差不多减半（determinism 门保证帧不依赖历史）。见 [`tools/kaggle/README.md`](../tools/kaggle/README.md)。
+**在 Kaggle 的 2×T4（或任何 Linux GPU 机器）上渲染**：`tools/kaggle/setup.sh` 一次把环境探好、缓存好（Node ≥ 22、带 NVENC 的 ffmpeg、Chrome、浏览器 GPU 和逐卡 NVENC 探测），`tools/kaggle/render.sh <项目> [--tier draft|final]` 按上面这些规则选 fps（**30 是默认**，声明更高也渲 30 并说明）、worker、捕获路径和编码器，出片后把文件本身读回来对账（帧率/尺寸/编码器有没有真站住）——Chrome 用 GPU 0，NVENC 编码钉在 GPU 1（`--tier` 连 NVENC 的 preset/cq 一起按评审/交片调好），短片自动单 worker 保住流式编码，长片把 worker 留给 auto 让并行快速捕获路由接手。≥ 30 s 的长片还可以 `tools/kaggle/render-split.sh <项目>`：两半同时画、两块卡各跑一个 NVENC、stream copy 拼接，墙钟时间差不多减半（determinism 门保证帧不依赖历史）。评审稿两个杠杆叠加：`--tier draft --res 720p`（`--res` 按分数 dpr 保布局降像素，实测 1.55×；引擎的 `--output-resolution` 只会向上超采样）。贵 CSS 的静态部分（叠着的 backdrop-filter、静态模糊）用 `bin/vh bake` 冻成一张 PNG 再叠动画层，样板实测 1.75×。见 [`tools/kaggle/README.md`](../tools/kaggle/README.md)。
 
 ### 最小写法（0.8.82）
 

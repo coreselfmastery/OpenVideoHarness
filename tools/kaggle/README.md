@@ -10,9 +10,10 @@ Kaggle 的免费 2×T4 实例（4 核 CPU、29 GB 内存）是这个仓库能用
 !bash tools/kaggle/setup.sh                    # 每个会话一次（首次 5–10 分钟，重启会话后秒级：缓存在 /kaggle/working）
 !source .kaggle/env.sh && bin/vh new promo my-film        # 照常建项目（自动 bin/vh hf-init：GSAP 本地化、字体 local()）
 # …写合成，source .kaggle/env.sh && npx hyperframes lint 到 0 error…
-!bash tools/kaggle/render.sh projects/<date>-my-film --tier draft    # 评审稿（快）
-!bash tools/kaggle/render.sh projects/<date>-my-film --tier final    # 成片（引擎自己的渲染器）
-!bash tools/kaggle/render-split.sh projects/<date>-my-film --tier final   # 或：两块卡各画半支（最快出成片）
+!bash tools/kaggle/render.sh projects/<date>-my-film --tier draft              # 评审稿（快）
+!bash tools/kaggle/render.sh projects/<date>-my-film --tier draft --res 720p    # 结构稿更快的说法（画面不变、像素减半）
+!bash tools/kaggle/render.sh projects/<date>-my-film --tier final              # 成片（引擎自己的渲染器）
+!bash tools/kaggle/render-split.sh projects/<date>-my-film --tier final       # 或：两块卡各画半支（最快出成片）
 !source .kaggle/env.sh && bin/vh mux projects/<date>-my-film/renders/<成片>.mp4 <混音> <输出>.mp4   # 声音照常套上
 ```
 
@@ -67,14 +68,19 @@ setup.sh 的每一行输出都是一个决定，照着读：
 
 | 决定 | 规则 | 为什么 |
 |---|---|---|
-| fps | 合成写了 `data-fps` 且 ≤ 30 → 保留（24 fps 的片子不会被动到）；没写 → 显式 `--fps 30`；写了 > 30 → 保留并提示一句 | 降帧率是最大的单项提速（约 48%），但片子自己的规格不该被工具悄悄改 |
+| fps | **30 是默认**（提速清单里最大的单项杠杆，约省一半的帧）。合成写了 `data-fps` 且 ≤ 30 → 保留（24 fps 的片子不会被动到）；写了 > 30 → **仍然渲 30** 并说明（要保住 60 fps 的每一帧，自己传 `--fps 60`） | 降帧率是最大的单项提速（约 48%）；声明得更低的规格照读照留，默认值定在这里而不是靠每个人的手指 |
 | workers | **< 240 s：`--workers 1`**。≥ 240 s 且硬件 GPU：**不传 `--workers`**——并行快速捕获路由器只在 worker 数留给 auto 时才接手，把它钉在 3 个 worker 的并行流式捕获上；显式传了反而把路由器关掉。≥ 240 s 且软件渲染：**实测内存**说了算——min(空核数, 空闲 GB / 6 GB 一个浏览器, 6)，空闲内存从 cgroup（Kaggle）或 /proc/meminfo 读 | 短片多 worker 会把每一帧先落到盘上再编码（最长慢 8 倍）；长片的 3-worker 并行 DE 流是实测最快的路径；内存快满的机器要的是少开浏览器，不是 OOM |
 | 编码 | NVENC 探测通过 → `--gpu`：编码钉在第二块 T4；带 `--tier` 时再由 `.kaggle/ffmpeg-gpu.sh` 重调（见下节） | CPU 那部分负载整个卸到 GPU 1；`bin/vh deliver` 的平台成片仍然 CPU libx264 CRF 16 重编码，交付质量不变 |
 | 捕获 | 硬件 WebGL **且合成过引擎自己的四个编译门**才加 `--experimental-fast-capture`：CSS 3D 上下文、`mix-blend-mode`、合成根的祖先带 background-image、shader 转场（`HyperShader.init` / `__hf.transitions`）——0.8.82 的编译器检测到任何一个都会**悄悄**退回截屏，这里用同一套模式先扫一遍（祖先是真走 DOM 的，不是猜 html/body），命中就说明是哪一个、环境变量怎么覆盖（`HF_FAST_CAPTURE_3D` / `_BLEND` / `_ANCESTOR_BG` / `PRODUCER_EXPERIMENTAL_FAST_CAPTURE`） | 快速捕获（drawElement）长片最高 5×，但要了却用不上只是浪费一个开关；扫不出结果时保守走截屏 |
 | 流式上限 | 永远把 `PRODUCER_STREAMING_ENCODE_MAX_DURATION_SECONDS` 设在**片长 + 60 s** | 引擎的流式编码有个时长上限，任何东西把它压到片长以下都会**静默**切到逐帧落盘（慢路径）；设到片长之上，就没有东西能在底下关掉流式 |
+| 帧提取缓存 | `HYPERFRAMES_EXTRACT_CACHE_DIR` 指到项目里（`renders/.hf-extract-cache`） | 有 `<video>` 素材的合成只在第一次渲染时切帧，重渲（含 Kaggle 下一个会话）直接复用；`renders/` 本来就是 `bin/vh clean` 的地盘，项目收尾时缓存跟着走 |
 | 磁盘 | 开画前估算峰值（帧数 × 分辨率 × 经验码率），不够就说；连平片都放不下直接拒（exit 2） | `/kaggle/working` 上限 20 GB，别让渲染跑一半才死 |
 
 `--detach` 把渲染放进后台（`HYPERFRAMES_RENDER_DETACHED=1`），打日志路径、pid 文件和停止命令；**只留最近 5 个日志**，旧的自动清掉。长渲染建议用它，notebook 的 cell 立刻返回。
+
+### 出片后的「held」回读卡
+
+渲染结束不是终点：render.sh 用 ffprobe 把**刚写出来的片子本身**读回来，对照刚才要的东西——帧数、尺寸、帧率、编码器。要了 NVENC 而文件里是 libx264 → 一句「`--gpu` 没站住，引擎回退了（原因在上面的日志里）」；要 30 fps 而文件里是 60 → 「要的 30，文件说的 60」。**标志是请求，文件才是事实**，这张卡说的是事实。带上 `--output-resolution` / `--width` / `--height` 时尺寸不对照（引擎自己会超采样），其余照查。
 
 ## --tier：两级渲染（F7）
 
@@ -102,9 +108,47 @@ T4（Turing，SM75）的 NVENC 与 libx264 的视觉对照和速度（1080p30 �
 
 两个细节：`-cq` 和 x264 的 `-crf` 同为 0–51 恒定质量标尺（数值越小质量越高）；p1–p7 是 NVENC 自己的档（p1 最快最糙 → p7 最慢最好），ffmpeg 把 x264 风格的 preset 名字映射过去（medium→p4、slow→p5……）。`render.mjs --encoder nvenc` 直接走 `--crf`/`--preset`（NVENC 参数原生），`patch.mjs` 从 sidecar 里读回同一套参数重渲——NVENC 片子的补丁仍是 NVENC，SPS/PPS 的一致性检查会拒绝混编。
 
+## --res：分辨率分层草稿（480p → 720p → 1080p）
+
+HyperFrames 的 `--output-resolution` 只会**向上**超采样（1080p、4K），没有 480p/720p 的档；这条工具链自己补上了：`tools/film/render.mjs --res <N>p`（以及 `render-split.sh --res`）把页面按**分数 deviceScaleFactor** 画——布局不动、每个元素还是它自己的位置，只是像素少了。
+
+- `--res 720p` 在 1080×1920 的片子上是 dpr 0.667 → 720×1280（44% 的像素）；`--res 480p` 是 dpr 0.444（20% 的像素）。
+- 实测阶梯（leo 片 0–6 s、SwiftShader 软渲、含浏览器启动与编码的墙钟）：**1080p 16.2 s → 720p 10.5 s（1.55×）→ 540p 8.1 s（2.0×）→ 480p 7.5 s（2.15×）**。帧数一样、画面一样（720p 对母片降采样的 PSNR 43 dB，远超 patch 的 40 dB 门），480p 更适合看节奏和构图（文字抗锯齿在 0.44 的分数比例下会更糙）。
+- 两条护栏：**dpr < 0.25 拒**（1080p 的页面最低 270p，再低 Chrome 自己都不稳）；**dpr > 1 拒**（`--res` 说的是草稿档、更少的像素——要**更多**像素是 `--dpr`（精确倍数）或引擎的 `--output-resolution`（超采样），混了会静默出 4× 的图，这不是它干的事）。
+- `render-split.sh --res` 两半同一个 dpr、接缝照旧是关键帧上的 stream copy（实测 90p 切分：160×90、960 帧一个不少）。
+
+评审循环里的用法：`--tier draft --res 720p` 出结构稿（两个杠杆叠乘），定稿再全尺寸 `--tier final`。
+
+## 简化贵 CSS：bake 把静态场景冻成一张 PNG
+
+提速清单的「简化贵 CSS」原来只是写作纪律（少叠大 `backdrop-filter` / `filter: blur()`）；现在是**工具 + 样板 + 数字**：
+
+- `bin/vh bake <project|page> [--out scene.png] [--at t] [--hide sel,sel…]`：把页面标记的动画层（`[data-bake-hide]`）藏起来，t 时刻截一张**无损 PNG**（默认 `assets/scene.png`）。合成器每一帧都要重跑、但内容永远不变的东西——玻璃面板背后的模糊、叠起来的阴影——冻成一张图。
+- 样板：`tools/kaggle/fixture/css-cost/` 是同一画面的一对双胞胎——`index.html` 是贵的那种（两层叠着的 `backdrop-filter`，卫星一动整块玻璃跟着重滤），`baked.html` 用 bake 出来的 PNG 加同样的两个动元素。
+- 实测（960×540、6 s、同参数 x264 crf 16）：**活模糊 11.4 s → 烘焙 6.5 s，快 1.75×**（去掉固定开销后画帧侧约 2.3×）；两支片子互 PSNR **58.4 dB**（同一画面，远超 40 dB 门），新鲜烘焙与已提交的 PNG 逐位相同（PSNR ∞）。
+- 测试套件把这三件事都钉住了：新鲜 bake = 提交的 PNG、双胞胎片子互 PSNR ≥ 40 dB、`--res` 档真的出 480×270。
+
+写作侧的规矩没变（engines/README.md）：动画元素别垫在玻璃下面（bake 藏不掉它）、文字要跟着动画走的就别进 PNG。
+
+## 字体全声明：local @font-face（以 leo 片为例）
+
+`bin/vh hf-init` 给新项目做了 local() 字体；showcase 02 这支老片子是后补的示范——从 Google Fonts 的 CDN `<link>` 换成本地 `@font-face`：
+
+- 只留**覆盖片子实际用字**的 unicode-range 子集（Noto Sans SC 500/800，37 个 face、2 MB，woff2 是 Google 自己的那几份文件，只是提前拿进来）；Δ（U+0394，`Δf ≈ (v/c)·f` 那个公式）Noto Sans SC 没有，补了一个 Noto Sans 的 greek 子集同族声明——**以前它悄悄落到本机有什么字体就用什么**（Linux 上是 Liberation Sans，每台机器不一样），现在是声明的、每台机器相同的字形。
+- 验证三件套：页面可绘的 173 个字符全部落在本地声明的 unicode-range 里；页面**零**跨源请求（`performance.getEntriesByType("resource")` 过一遍）；CDN 版与本地版互 PSNR——除 Δ 之外逐位相同（Δ 是有意修的那个字形，37 dB 的差全在公式那一行）。
+- 引擎自己的配合：编译器把本地字体嵌成 data URI（大文件保持 file-backed），所以离线渲染不缺字。
+
+## lambda.sh：AWS Lambda 上的分布式渲染
+
+`tools/kaggle/lambda.sh` 把这套的项目约定映射到引擎自己的 lambda 命令上（`deploy` 一次 → `render` 切块并行画 → MP4 落在栈的 S3 桶里）。**前提在动手前点名**：aws CLI（带可用凭证）、AWS SAM CLI、bun（打 handler 的 ZIP）、`@hyperframes/aws-lambda`——缺哪个就说哪个怎么装，而不是死在 Step Functions 深处；Kaggle 上一个都没有，那也没关系（同一台机器上 `--workers` 和 render-split 就是并行，这条路是给有云账号的机器的）。
+
+- 决定与 render.sh 同源：宽高用合成自己的（`lambda render` 必须要，缺了拒）、fps 24/30 保留其余渲 30（lambda 只收 24|30|60）、`--tier draft` → `--quality draft`、`final` → `--quality high`（lambda 的质量档是 draft|standard|high）、块大小与并行度留给引擎（240 帧一块、16 块并行）。
+- 诚实的话：Lambda worker **没有 GPU、没有 NVENC**——赢在块并行（强 vCPU × 16 块在飞），不是单帧速度；成本是每次渲染把项目 tar 上传 S3。`--dry-run` 打印将执行的完整命令，什么都不碰。
+- 测试套件用桩引擎 + 桩 AWS 工具把参数映射和每一条拒绝都钉死（fps 25 拒、`--tier`+`--quality` 拒、无尺寸拒、无 aws 拒……）。
+
 ## render-split.sh：一支片子两半同时画（F6）
 
-`tools/kaggle/render-split.sh <project> [--tier draft|final] [--at 秒] [--gpu-a N --gpu-b N] [--workers N] [render.mjs 的其余参数] [--dry-run] [--keep] [--skip-determinism]`
+`tools/kaggle/render-split.sh <project> [--tier draft|final] [--res 480p|720p…] [--at 秒] [--gpu-a N --gpu-b N] [--workers N] [render.mjs 的其余参数] [--dry-run] [--keep] [--skip-determinism]`
 
 **计划**：从 index.html 读片长、fps 和**合成自己声明的场景切点**（各 clip 的 `data-start`），在中间 ±¼ 片长的窗口里挑离中点（或 `--at`）最近的切点下刀——每一镜都完整地落在某一半里；没有切点就切正中帧。两半各由一个浏览器按仓库的页契约**逐帧精确**画出（`tools/film/render.mjs --frames`，就是 `bin/vh patch` 重渲镜用的同一条路），各配一个 ffmpeg：**半支 A 的 NVENC 在 GPU 0、半支 B 的 NVENC 在 GPU 1**，两个浏览器留在 GPU 0。画完三重校验后 **stream copy 拼接**（无重编码）：
 
@@ -124,23 +168,23 @@ T4（Turing，SM75）的 NVENC 与 libx264 的视觉对照和速度（1080p30 �
 
 | 手段 | 落地 |
 |---|---|
-| fps 30（或 24） | render.sh 按上面的规则；`--fps` 可覆盖 |
+| fps 30（或 24） | **30 是默认**：声明 ≤ 30 照读照留，声明 > 30 仍渲 30 并说明（`--fps` 可覆盖）；出片后的 held 卡把文件里真实的帧率读回来对账 |
 | `HF_DE_PARALLEL_ROUTER=true` | env.sh 常备（忘了它长渲染慢 3 倍；设成环境变量还躲开 HyperFrames 的“失败一次就静默关掉”熔断） |
-| GPU 编码 `--gpu` | NVENC 探测通过自动加，钉在第二块 T4 |
+| GPU 编码 `--gpu` | NVENC 探测通过自动加，钉在第二块 T4；held 卡从文件里确认 h264_nvenc 真的站住了 |
 | 浏览器 GPU `--browser-gpu` | WebGL 硬件探测通过自动加 |
 | 两块卡画一支片子 | render-split.sh（≥ 30 s 长片；render.sh 打印提示） |
-| worker 数 | render.sh 按片长和实测内存定（上面） |
+| worker 数 | render.sh 按片长和实测内存定（上面）；软渲小机器上实测过 1/2/6 的权衡（见研究一节） |
 | 两级渲染 `--tier` | draft = `--quality draft` + NVENC p4/cq 28；final = `--quality delivery` + NVENC p7/cq 19 |
 | 流式编码不被时长上限关掉 | render.sh 永远设上限 = 片长 + 60 s |
-| 简化贵 CSS | 仍是写作时的事：少叠大 `backdrop-filter` / `filter: blur()`，静态模糊预渲成 PNG（engines/README.md） |
+| 简化贵 CSS | **bin/vh bake**：静态场景（叠着的 backdrop-filter、静态模糊）冻成一张无损 PNG，动画层照常画；css-cost 样板实测 1.75×（见上节） |
 | MP4 不用 WebM | 默认就是 MP4（VP9 编码在 CPU 上） |
 | Chrome 缓存 | setup.sh 的 `browser ensure`，会话间留在 /kaggle/working |
-| CDNs 本地化 | `bin/vh hf-init` 已经做（GSAP 进 node_modules） |
-| 字体全声明 | `bin/vh hf-init` 已经做（local() @font-face） |
-| lambda / cloudrun 分布式 | 不适用于 Kaggle（要云账号）；同一台机器上 `--workers` 和 render-split 就是并行 |
-| HTML-in-canvas 快速捕获 | 硬件 GPU 且过引擎四个编译门时 render.sh 显式开（Linux 上默认关） |
-| 分辨率分层 480p/720p/1080p | HyperFrames 的 `--resolution` 只接受整数倍预设（1080p、4K），没有 480p/720p；迭代提速靠 `--tier draft`，4K 靠 `--resolution 4k` |
-| 预计算共享素材 | 写作时的事（logo、背景、字体一次画好），engines/README.md 的规则不变 |
+| CDNs 本地化 | `bin/vh hf-init` 已经做（GSAP 进 node_modules）；引擎对缺失的本地 gsap 还会自动改写为 CDN（反方向也有究底） |
+| 字体全声明 | `bin/vh hf-init` 给新项目做 local()；老片子照 showcase 02 的样子补（unicode-range 子集 + 希腊 Δ 补齐，见上节） |
+| lambda / cloudrun 分布式 | tools/kaggle/lambda.sh（要有 AWS 账号：aws/SAM/bun 齐才动手，缺什么点名什么）；Kaggle 上同机的 `--workers` 和 render-split 就是并行 |
+| HTML-in-canvas 快速捕获 | 硬件 GPU 且过引擎四个编译门时 render.sh 显式开（Linux 上默认关）；软渲机器上引擎自己也会拒（实测两道门：browserGpuMode=software 直接强制截屏、SwiftShader 探测再拒一次——与 render.sh 的门控同一个判断） |
+| 分辨率分层 480p/720p/1080p | **render.mjs / render-split.sh 的 `--res`**：分数 dpr 保布局降像素（引擎的 `--output-resolution` 只会向上超采样）；实测 720p 1.55×、480p 2.15×（见上节） |
+| 预计算共享素材 | **bin/vh bake**（静态场景）；`HYPERFRAMES_EXTRACT_CACHE_DIR`（`<video>` 切帧缓存进项目）；setup.sh 的 Chrome/npm 缓存；字体子集本地化 |
 | 只重渲改动的镜 | canvas 片子 `bin/vh patch`（本仓库自己的）；见下面研究一节对 HyperFrames 片子的结论 |
 
 ## 质量没有让步的地方
@@ -163,6 +207,7 @@ T4（Turing，SM75）的 NVENC 与 libx264 的视觉对照和速度（1080p30 �
 - **H10 · `CUDA_VISIBLE_DEVICES` 能否隔离 Chrome**：**不能**。Chrome 的 GPU 选择走 EGL 设备枚举（ANGLE），不读 CUDA 的环境变量；NVENC 侧则可以用 ffmpeg 自己的 `-gpu`（本套用的）或 `CUDA_VISIBLE_DEVICES`。这就是“浏览器留在 GPU 0”的原因，也是为什么隔离两个 NVENC 用 `-gpu` 而不是环境变量。
 - **I3 · 更激进的 Chrome flag**：dist 里引擎已带 `--disable-dev-shm-usage`、deterministic 模式等；再叠 `--disable-gpu-watchdog`、`--ignore-gpu-blocklist` 之类对吞吐无实测收益，且有的会在某些驱动组合下改变渲染路径（= 改变画面）。**结论：不加引擎没带的 flag**。
 - **I4 · WebGL 纹理零拷贝进 NVENC**（Chrome 画到 GPU 面、ffmpeg 直接编码，不过 JPEG/管道）：Chrome headless 没有导出 GPU surface 给外部进程的通道（CDP screencast 是压缩帧，drawElement 是 DOM 读回）。引擎自己的快速捕获已经省掉了截屏路径里最贵的一步；零拷贝要 Chrome/ffmpeg 两边同时改。**结论：当前最快的可用路径就是快速捕获 + NVENC，零拷贝不在 0.8.x 的能力范围**。
+- **workers 在软渲小机器上的实测反转**（本沙箱 2 核 / 4 GB、同一支 8 s 真片子过真引擎）：`--workers 1`（流式）13.0 s、`--workers 2` 9.1 s、`--workers 6`（逐帧落盘）7.1 s——软光栅是瓶颈时，多开浏览器赢过流式的串行等待，尽管多付了落盘的往返。render.sh 的 ≤ 240 s → 1 是按 Kaggle（快光栅 + 29 GB）调的，在那里流式照旧占优；在纯软渲的小机器上要快就用 `--workers N` 明说。同一次实测还看到：**≤ 8 GB 内存的机器引擎自己进 low-memory profile**（强制截屏、跳过 worker 校准，日志明说），`--no-low-memory-mode` / `PRODUCER_LOW_MEMORY_MODE=false` 可关。
 
 ## 排查
 
@@ -177,3 +222,5 @@ T4（Turing，SM75）的 NVENC 与 libx264 的视觉对照和速度（1080p30 �
 ## 测试
 
 `tools/kaggle/test.sh`（`tools/ci.sh` 自动跑它）用**桩**验证 setup.sh 的每个探针、ffmpeg 包装器的 tier 重调（引擎真实参数形状的 12 种情况）、render.sh 的全部决定和错误路径、render-split 的计划数字；有 Chrome 的机器上再跑**真**的 32 s 切分渲染：determinism 门、两半并行、三重拼接校验、sidecar 落点、打断后一个文件都不留。89 项断言，全部绿才许过。
+
+现在这一套还用桩钉住：render.sh **出片后的 held 回读卡**（要了 NVENC 文件却是 libx264、要 30 fps 文件却是 60——每个分支都驱动到）、`--fps 30 默认`（声明 60 → 渲 30，`--fps 60` 覆盖）、帧提取缓存落位、`render.mjs`/`render-split.sh` 的 `--res` 护栏（升采样拒、0.25 地板拒、`--dpr` 互斥）、lambda.sh 的参数映射与全部拒绝（桩引擎 + 桩 AWS 工具）。有 Chrome 的机器再跑**真**的：css-cost 的新鲜烘焙 = 提交的 PNG（PSNR 门）、双胞胎片子互 PSNR ≥ 40 dB、`--res` 档真的出 480×270，以及 **render.sh 过真引擎**的端到端（引擎自己的横幅说 30fps · draft · 1 workers，held 卡把真片子读回来对账）。共 **139 项**断言，全部绿才许过。

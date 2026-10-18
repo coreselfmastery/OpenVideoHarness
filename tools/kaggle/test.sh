@@ -150,6 +150,7 @@ NPXLOG="$WORK/npx.log"
 cat > "$BIN/npx" <<EOF
 #!/usr/bin/env bash
 printf '%s\n' "\$* >> \${OVH_KAGGLE_TIER:-}" >> "$NPXLOG"
+printf 'extract-cache=%s\n' "\${HYPERFRAMES_EXTRACT_CACHE_DIR:-none}" >> "$NPXLOG"
 exit 0
 EOF
 chmod +x "$BIN/npx"
@@ -250,6 +251,24 @@ flags=$(sed -n '1p' "$NPXLOG")
 echo "$flags" | grep -q -- "--workers 1" && ok "a <240 s film renders with one worker (the streaming path)" || bad "short film not on one worker: [$flags]"
 echo "$flags" | grep -q -- "--fps 30" && ok "no declared fps becomes an explicit 30" || bad "no explicit 30 fps: [$flags]"
 
+# fps 30 is the default (the speed table's biggest lever): a composition declaring more than 30 is
+# rendered at 30 with a note — not silently, and not by changing the composition itself
+P60="$WORK/proj-60"; mkproj "$P60" 400 60 '<div data-start="200" data-duration="10"></div>'
+: > "$NPXLOG"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P60" 2>&1)
+flags=$(sed -n '1p' "$NPXLOG")
+echo "$flags" | grep -q -- "--fps 30" && ok "a declared 60 fps is rendered at 30 by default" || bad "a declared 60 was not dropped to 30: [$flags]"
+echo "$OUT"  | grep -q "fps 30 (the default here; the composition declares 60" && ok "the 30-default note says what the composition declared and how to keep 60" || bad "the 30-default note is wrong: $(echo "$OUT" | grep 'fps 30')"
+: > "$NPXLOG"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P60" --fps 60 2>&1)
+sed -n '1p' "$NPXLOG" | grep -q -- "--fps 60" && ok "--fps 60 keeps every frame of a 60 fps spec" || bad "--fps 60 did not pass through: [$(sed -n '1p' "$NPXLOG")]"
+echo "$OUT" | grep -q "fps 60 (yours)" && ok "the explicit fps is labelled yours" || bad "the explicit fps note is wrong"
+
+# the extracted-frame cache (<video> sources) is pointed into the project: a re-render reuses the slices
+: > "$NPXLOG"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$PS" >/dev/null 2>&1)
+grep -q "extract-cache=$PS/renders/.hf-extract-cache" "$NPXLOG" && ok "HYPERFRAMES_EXTRACT_CACHE_DIR lands inside the project (renders/.hf-extract-cache)" || bad "the extract cache was not exported into the project: $(sed -n '2p' "$NPXLOG")"
+
 # the software path: workers measured against free memory (OVH_TEST_MEM_MB stands in for the cgroup)
 cat > "$TESTROOT/.kaggle/env.software.sh" <<'EOF'
 export OVH_KAGGLE_SETUP=test
@@ -274,6 +293,82 @@ echo "$flags" | grep -q -- "--browser-gpu" && bad "software WebGL must not ask f
 : > "$NPXLOG"
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_MEM_MB=7000 bash tools/kaggle/render.sh "$P" 2>&1)
 sed -n '1p' "$NPXLOG" | grep -q -- "--workers 1" && ok "a nearly-full box falls back to one browser" || bad "7 GB free should give 1 worker: [$(sed -n '1p' "$NPXLOG")]"
+
+# ── the held card: after a render, the film itself is read back and checked against the ask ─────
+# (a stub npx that leaves a fake MP4 behind + a stub ffprobe answering the card's exact probe; the
+# card's job is to say which flag held and which fell back — here every branch of that is driven)
+printf '\033[36m→\033[0m render.sh held card (the film read back against what was asked)\n'
+cat > "$BIN/ffprobe" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "${OVH_TEST_FFPROBE_JSON:-}"
+exit 0
+EOF
+chmod +x "$BIN/ffprobe"
+cat > "$BIN/npx" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$* >> \${OVH_KAGGLE_TIER:-}" >> "$NPXLOG"
+mkdir -p renders && printf 'x' > "renders/stub-\$(date +%s%N).mp4"
+exit 0
+EOF
+chmod +x "$BIN/npx"
+cp "$TESTROOT/.kaggle/env.software.sh" "$TESTROOT/.kaggle/env.sh"   # no NVENC: the codec is simply reported
+P24="$WORK/proj-24"; mkproj "$P24" 400 24 ""
+: > "$NPXLOG"
+export OVH_TEST_FFPROBE_JSON='{"streams":[{"codec_name":"libx264","width":1920,"height":1080,"avg_frame_rate":"24/1","nb_frames":"9600"}]}'
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" 2>&1)
+echo "$OUT" | grep -q "held     : 9600 frames, 1920x1080, 24 fps, libx264 — the encode came out libx264, as planned" \
+  && ok "a film that came out as asked: the card says held, with the file's own numbers" \
+  || bad "the as-asked card is wrong: $(echo "$OUT" | grep 'held')"
+export OVH_TEST_FFPROBE_JSON='{"streams":[{"codec_name":"libx264","width":1920,"height":1080,"avg_frame_rate":"60/1","nb_frames":"24000"}]}'
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" 2>&1)
+echo "$OUT" | grep -q "held     : 24000 frames, 1920x1080, 60 fps, libx264 — asked 24 fps, the file says 60" \
+  && ok "a film that ignored the fps: the card names the mismatch" \
+  || bad "the fps-mismatch card is wrong: $(echo "$OUT" | grep 'held')"
+export OVH_TEST_FFPROBE_JSON='{"streams":[{"codec_name":"libx264","width":1280,"height":720,"avg_frame_rate":"24/1","nb_frames":"9600"}]}'
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" 2>&1)
+echo "$OUT" | grep -q "the composition is 1920x1080, the file says 1280x720" \
+  && ok "a film at the wrong size: the card says the composition's size and the file's" \
+  || bad "the size-mismatch card is wrong: $(echo "$OUT" | grep 'held')"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" --output-resolution 4k 2>&1)
+echo "$OUT" | grep -q "the composition is 1920x1080" && bad "a --output-resolution render must not be size-checked (the engine supersamples)" \
+  || ok "a --output-resolution render: the size check stands down, the rest of the card still prints"
+# the NVENC branch: asked --gpu (hardware env), the file came out libx264 — the engine fell back
+cp "$TESTROOT/.kaggle/env.hardware.sh" "$TESTROOT/.kaggle/env.sh"
+export OVH_TEST_FFPROBE_JSON='{"streams":[{"codec_name":"libx264","width":1920,"height":1080,"avg_frame_rate":"24/1","nb_frames":"9600"}]}'
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" 2>&1)
+echo "$OUT" | grep -q "held     : 9600 frames, 1920x1080, 24 fps, libx264 — NVENC was asked for, the file came out libx264 (the engine fell back" \
+  && ok "NVENC asked, libx264 out: the card says the --gpu flag did not hold" \
+  || bad "the NVENC-fallback card is wrong: $(echo "$OUT" | grep 'held')"
+export OVH_TEST_FFPROBE_JSON='{"streams":[{"codec_name":"h264_nvenc","width":1920,"height":1080,"avg_frame_rate":"24/1","nb_frames":"9600"}]}'
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" 2>&1)
+echo "$OUT" | grep -q "held     : 9600 frames, 1920x1080, 24 fps, h264_nvenc — the --gpu flag held: the file itself says h264_nvenc" \
+  && ok "NVENC asked, h264_nvenc out: the card says the flag held" \
+  || bad "the NVENC-held card is wrong: $(echo "$OUT" | grep 'held')"
+unset OVH_TEST_FFPROBE_JSON
+# no new MP4 (an -o or --format render): the card says so instead of guessing at an old file —
+# renders/ emptied first, so the stub films of the cases above cannot be mistaken for this one's
+rm -rf "$P24/renders"
+cat > "$BIN/npx" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$* >> \${OVH_KAGGLE_TIER:-}" >> "$NPXLOG"
+exit 0
+EOF
+chmod +x "$BIN/npx"
+cp "$TESTROOT/.kaggle/env.software.sh" "$TESTROOT/.kaggle/env.sh"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P24" 2>&1)
+echo "$OUT" | grep -q "held     : no new MP4 under renders/ (an -o or --format render?) — the flags above were the request" \
+  && ok "no new film: the card reports it, an older MP4 is never read as this render's" \
+  || bad "the no-new-MP4 card is wrong: $(echo "$OUT" | grep 'held')"
+# the stubs back to their standard shapes for the sections below (the split's dry-runs want the
+# plain recording npx; ffprobe back to the ffmpeg stub's twin)
+cat > "$BIN/npx" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$* >> \${OVH_KAGGLE_TIER:-}" >> "$NPXLOG"
+printf 'extract-cache=%s\n' "\${HYPERFRAMES_EXTRACT_CACHE_DIR:-none}" >> "$NPXLOG"
+exit 0
+EOF
+chmod +x "$BIN/npx"
+ln -sf "$BIN/ffmpeg" "$BIN/ffprobe"
 
 # the error paths (E5): each refusal is a message and a non-zero exit
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$WORK/no-such-project" 2>&1); rc=$?
@@ -336,7 +431,99 @@ OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$PM
 echo "$OUT" | grep -q "cut      : frame 6000 (t=200.000 s)" && ok "no data-starts: the exact midpoint, still on a frame" || bad "midpoint cut wrong: $(echo "$OUT" | grep 'cut')"
 PF60="$WORK/proj-60fps"; mkproj "$PF60" 400 60 '<div data-start="200" data-duration="10"></div>'
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$PF60" --dry-run 2>&1)
-echo "$OUT" | grep -q "fps 60 (the composition asks for it" && ok "a declared 60 fps is kept with the halving note" || bad "60 fps note wrong: $(echo "$OUT" | grep 'fps')"
+echo "$OUT" | grep -q "fps 30 (the default here; the composition declares 60 — pass --fps 60 to keep every frame of it)" \
+  && ok "a declared 60 fps is rendered at 30 by default (as render.sh), the note says how to keep 60" \
+  || bad "60 fps note wrong: $(echo "$OUT" | grep 'fps')"
+echo "$OUT" | grep -q -- "--frames 0:6000 --fps 30" && ok "both halves of a 60 fps film draw at 30 fps" || bad "the halves are not at 30 fps: $(echo "$OUT" | grep -a 'A: exec' | head -1)"
+
+# --res: a draft tier for the split — both halves at the same fractional dpr, upscales refused
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$P" --res 720p --dry-run 2>&1)
+echo "$OUT" | grep -q "res      : 1280x720 (the page's own layout, drawn at dpr 0.6667 — a 720p draft)" \
+  && ok "--res 720p on a 1920x1080 comp: the note says the tier's own size and its dpr" \
+  || bad "the 720p res note is wrong: $(echo "$OUT" | grep -a 'res ')"
+echo "$OUT" | grep -q -- "--dpr 0.6667" && ok "both halves carry the tier's --dpr" || bad "the halves do not carry --dpr: $(echo "$OUT" | grep -a 'A: exec' | head -1)"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$P" --res 2160 --dry-run 2>&1); rc=$?
+[ "$rc" != 0 ] && echo "$OUT" | grep -q "more pixels than the page has" && ok "--res above the page's own size is refused (--res is a draft tier)" || bad "an upscaling --res was accepted: [$OUT]"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$P" --res 240p --dry-run 2>&1); rc=$?
+[ "$rc" != 0 ] && echo "$OUT" | grep -q "under the 0.25 floor" && ok "--res under the 0.25 dpr floor is refused" || bad "a 240p tier on a 1080p page was accepted: [$OUT]"
+
+# ── render.mjs --res: the tier's own guards, no browser needed (the parse dies first) ───────────
+printf '\033[36m→\033[0m render.mjs --res (the draft-tier guards)\n'
+COST="$ROOT/tools/kaggle/fixture/css-cost/index.html"   # a 960x540 page-contract page
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --res 1080p --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "more pixels than the page has" \
+  && ok "--res above the page's own size is refused (a tier is fewer pixels; --dpr is the exact factor)" \
+  || bad "an upscaling --res was accepted by render.mjs: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --res 120p --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "under the 0.25 floor" && ok "--res under the 0.25 dpr floor is refused" || bad "a 120p tier on a 540p page was accepted: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --res 270p --dpr 1 --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "not both" && ok "--res and --dpr together are refused" || bad "--res and --dpr were both accepted: [$OUT]"
+
+# ── lambda.sh: the distributed road, driven against a stub engine and stub AWS tools ────────────
+printf '\033[36m→\033[0m lambda.sh (the project mapped onto the engine lambda commands, the refusals)\n'
+cp "$ROOT/tools/kaggle/lambda.sh" "$TESTROOT/tools/kaggle/"
+HFSTUB="$WORK/hfstub"; mkdir -p "$HFSTUB/styles/_swatch/node_modules/.bin"
+cat > "$HFSTUB/styles/_swatch/node_modules/.bin/hyperframes" <<EOF
+#!/usr/bin/env bash
+printf '%s\n' "\$*" >> "$WORK/hf-lambda.log"
+[ "\$1" = lambda ] && [ "\$2" = policies ] && printf '%s\n' '{"Version":"2012-10-17","Statement":[]}'
+exit 0
+EOF
+chmod +x "$HFSTUB/styles/_swatch/node_modules/.bin/hyperframes"
+for b in aws sam bun; do printf '#!/usr/bin/env bash\nexit 0\n' > "$BIN/$b"; chmod +x "$BIN/$b"; done
+: > "$WORK/hf-lambda.log"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh "$P" --dry-run 2>&1); rc=$?
+chk "a lambda render dry-run exits 0" "$rc" "0"
+echo "$OUT" | grep -q "command  : hyperframes lambda render <project> --width 1920 --height 1080 --fps 24 --wait" \
+  && ok "the dry run names the exact engine command (the comp's own size, its own 24 fps kept, --wait by default)" \
+  || bad "the dry-run command line is wrong: $(echo "$OUT" | grep -a 'command')"
+[ -s "$WORK/hf-lambda.log" ] && bad "a dry run invoked the engine" || ok "a dry run invokes nothing"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh "$P" >/dev/null 2>&1)
+chk "the render reaches the engine as the engine expects it" "$(sed -n '1p' "$WORK/hf-lambda.log")" "lambda render . --width 1920 --height 1080 --fps 24 --wait"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh "$PS" >/dev/null 2>&1)
+grep -q -- "--fps 30" "$WORK/hf-lambda.log" && ok "a composition without data-fps lands at an explicit 30 on lambda" || bad "no declared fps did not become 30: [$(cat "$WORK/hf-lambda.log")]"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $P --tier draft >/dev/null 2>&1)
+grep -q -- "--quality draft" "$WORK/hf-lambda.log" && ok "--tier draft maps to the engine's --quality draft" || bad "tier draft did not map: [$(cat "$WORK/hf-lambda.log")]"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $P --tier final >/dev/null 2>&1)
+grep -q -- "--quality high" "$WORK/hf-lambda.log" && ok "--tier final maps to the engine's --quality high (lambda's best)" || bad "tier final did not map: [$(cat "$WORK/hf-lambda.log")]"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $P --no-wait >/dev/null 2>&1)
+grep -q -- "--wait" "$WORK/hf-lambda.log" && bad "--no-wait still passed --wait" || ok "--no-wait leaves the --wait off (fire and poll later)"
+grep -q -- "--quality" "$WORK/hf-lambda.log" && bad "no tier must not name a quality" || ok "no tier: the engine's own default quality stands"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $PF60 >/dev/null 2>&1)
+grep -q -- "--fps 30" "$WORK/hf-lambda.log" && ok "a declared 60 fps renders at 30 on lambda too (the same default)" || bad "the 60 fps comp did not land at 30: [$(cat "$WORK/hf-lambda.log")]"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $PF60 --fps 60 >/dev/null 2>&1)
+grep -q -- "--fps 60" "$WORK/hf-lambda.log" && ok "--fps 60 keeps every frame on lambda" || bad "--fps 60 did not pass through: [$(cat "$WORK/hf-lambda.log")]"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $P --fps 25 2>&1); rc=$?
+[ "$rc" != 0 ] && echo "$OUT" | grep -q "lambda accepts 24, 30 or 60" && ok "--fps 25 is refused with the engine's own rule" || bad "--fps 25 was accepted: [$OUT]"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $P --tier draft --quality high 2>&1); rc=$?
+[ "$rc" != 0 ] && echo "$OUT" | grep -q "both name the quality" && ok "--tier and --quality together are refused (as render.sh)" || bad "--tier and --quality were both accepted"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh deploy --stack-name mine --region eu-west-1 >/dev/null 2>&1)
+chk "deploy reaches the engine with its stack flags" "$(sed -n '1p' "$WORK/hf-lambda.log")" "lambda deploy --stack-name mine --region eu-west-1"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh policies --out $WORK/iam.json >/dev/null 2>&1)
+grep -q "^lambda policies user$" "$WORK/hf-lambda.log" && ok "policies asks the engine for its own IAM policy" || bad "policies did not reach the engine: [$(cat "$WORK/hf-lambda.log")]"
+grep -q '"Statement"' "$WORK/iam.json" && ok "the policy file is written where --out says" || bad "no policy file was written"
+: > "$WORK/hf-lambda.log"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh progress hf-render-abcd1234 >/dev/null 2>&1)
+chk "progress passes the id straight through" "$(sed -n '1p' "$WORK/hf-lambda.log")" "lambda progress hf-render-abcd1234"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh progress 2>&1); rc=$?
+[ "$rc" != 0 ] && ok "progress without an id is refused" || bad "progress without an id was accepted"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $WORK/no-such-project 2>&1); rc=$?
+[ "$rc" != 0 ] && echo "$OUT" | grep -q "no index.html" && ok "a missing project is refused before anything runs" || bad "a missing project was accepted"
+NOWIDTH="$WORK/proj-nowidth"; mkdir -p "$NOWIDTH"; printf '<div data-composition-id="c" data-duration="8"></div>' > "$NOWIDTH/index.html"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh $NOWIDTH 2>&1); rc=$?
+[ "$rc" != 0 ] && echo "$OUT" | grep -q "refuses to guess" && ok "a composition with no size and no --width/--height is refused (as the engine would)" || bad "a sizeless composition was accepted: [$OUT]"
+# the prerequisites: no aws CLI on PATH → the named refusal, not a failure deep in AWS
+OUT=$(cd "$TESTROOT" && PATH="/usr/bin:/bin" OVH_TEST_HF_ROOT="$HFSTUB" bash tools/kaggle/lambda.sh "$P" 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "no aws on PATH" && ok "no aws CLI: refused with the install hint" || bad "the missing-aws refusal is wrong: [$OUT] (exit $rc)"
+
 
 # ── the split end to end, with a real browser and the real ffmpeg when the machine has them ──────
 # (the stubs above are not it: the halves have to be drawn for real and joined for real. The fixture is
@@ -426,6 +613,87 @@ PY
       ok "the interrupted-split check: skipped (the split ended before the halves began)"
     fi
   fi
+fi
+
+# ── bake + the css-cost pair + a real render.sh through the engine, when Chrome is here ─────────
+# (the split E2E above already proved Chrome one way or the other: E2E_OUT's browser line carries
+# the path it found. Everything in this section is budget-bounded the same way — a slow host is a
+# fact about the host, not a verdict about the code.)
+CHROME_BIN=$(printf '%s\n' "$E2E_OUT" | sed -n 's/^.*browser  : \(.*\) (both halves on GPU 0.*$/\1/p' | head -1)
+if [ -z "$CHROME_BIN" ]; then
+  ok "bake / css-cost / render.sh end to end: skipped (no Chrome on this machine; the guards and the plans are checked above)"
+else
+  # a fresh bake of an unchanged page is the committed PNG (the fixture pair's whole guarantee)
+  printf '\033[36m→\033[0m bake + the css-cost pair (a real browser: the bake, the twin films, the tier)\n'
+  OUT=$(node "$ROOT/tools/film/bake.mjs" "$ROOT/tools/kaggle/fixture/css-cost/index.html" --out "$WORK/scene-fresh.png" --browser "$CHROME_BIN" 2>&1); rc=$?
+  chk "a fresh bake of the fixture exits 0" "$rc" "0"
+  echo "$OUT" | grep -qF '1 element(s) of [[data-bake-hide]] hidden' && ok "the bake hid the animated layer the page marks" || bad "the bake hid the wrong thing: [$OUT]"
+  if [ "$rc" = 0 ]; then
+    PSNR=$(ffmpeg -hide_banner -i "$WORK/scene-fresh.png" -i "$ROOT/tools/kaggle/fixture/css-cost/assets/scene.png" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
+    case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "the fresh bake matches the committed scene.png (PSNR ${PSNR} dB)" || bad "the bake drifted from the committed PNG: PSNR ${PSNR} dB" ;; *)
+      bad "the bake-vs-committed PSNR could not be read: [$PSNR]" ;;
+    esac
+    # the twin films: the same picture, one with the live blur and one from the baked PNG
+    node "$ROOT/tools/film/render.mjs" "$ROOT/tools/kaggle/fixture/css-cost/index.html" --browser "$CHROME_BIN" \
+      --out "$WORK/css-live.mp4" --fps 30 --crf 16 --preset medium >/dev/null 2>&1 && \
+    node "$ROOT/tools/film/render.mjs" "$ROOT/tools/kaggle/fixture/css-cost/baked.html" --browser "$CHROME_BIN" \
+      --out "$WORK/css-baked.mp4" --fps 30 --crf 16 --preset medium >/dev/null 2>&1 && \
+    { PSNR=$(ffmpeg -hide_banner -i "$WORK/css-live.mp4" -i "$WORK/css-baked.mp4" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
+      case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "the live-blur film and the baked-PNG film are the same picture (PSNR ${PSNR} dB, well over bin/vh patch's 40 dB gate)" || bad "the twin films drifted: PSNR ${PSNR} dB" ;; *)
+        bad "the twin-film PSNR could not be read: [$PSNR]" ;;
+      esac
+    } || bad "a twin film did not render"
+    # the --res tier on a real render: 270p of a 960x540 page is a 480x270 film
+    node "$ROOT/tools/film/render.mjs" "$ROOT/tools/kaggle/fixture/css-cost/index.html" --browser "$CHROME_BIN" \
+      --out "$WORK/css-270.mp4" --fps 30 --res 270p --crf 16 --preset medium >/dev/null 2>&1 && \
+    { dims=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$WORK/css-270.mp4" 2>/dev/null)
+      chk "a --res 270p render comes out 480x270 (the page's own layout at half the pixels)" "$dims" "480,270"
+    } || bad "the --res 270p render failed"
+  fi
+
+  # render.sh end to end: the real engine (npx, its own download), the real film read back. The
+  # engine hangs on exit on some hosts (0.8.82 browser-pool close race — the README says so); the
+  # budget handles that: over budget the process is stopped and the film itself is still checked.
+  # The browser: only a chrome-headless-shell is handed over (HYPERFRAMES_BROWSER_PATH) — the engine
+  # has its own version ceiling for system Chromes, and when nothing pinned is found it downloads
+  # its own shell, which always works.
+  printf '\033[36m→\033[0m render.sh through the real engine (fps, workers, tier, the held card)\n'
+  HFE2E="$WORK/hf-e2e"; cp -R "$ROOT/tools/kaggle/fixture/hf" "$HFE2E"; rm -rf "$HFE2E/renders" "$HFE2E/node_modules"
+  cp "$TESTROOT/.kaggle/env.software.sh" "$TESTROOT/.kaggle/env.sh"
+  R_E2E_BUDGET=${OVH_TEST_RENDER_E2E_BUDGET:-600}
+  case "$R_E2E_BUDGET" in ''|*[!0-9]*) R_E2E_BUDGET=600 ;; esac
+  R_LOG="$WORK/hf-e2e.log"; : > "$R_LOG"
+  HF_BROWSER_ENV=""
+  case "$CHROME_BIN" in *chrome-headless-shell*) HF_BROWSER_ENV="HYPERFRAMES_BROWSER_PATH=$CHROME_BIN" ;; esac
+  T0=$(date +%s)
+  ( cd "$TESTROOT" && exec env -u CHROME_PATH $HF_BROWSER_ENV PATH="$PATH" \
+      bash tools/kaggle/render.sh "$HFE2E" --tier draft ) >"$R_LOG" 2>&1 &
+  RP=$!
+  R_END=$((T0 + R_E2E_BUDGET))
+  while kill -0 "$RP" 2>/dev/null && [ "$(date +%s)" -lt "$R_END" ]; do sleep 2; done
+  if kill -0 "$RP" 2>/dev/null; then
+    kill -TERM "$RP" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8; do kill -0 "$RP" 2>/dev/null || break; sleep 1; done
+    kill -KILL "$RP" 2>/dev/null || true; wait "$RP" 2>/dev/null
+    pkill -TERM -f "$HFE2E" 2>/dev/null; sleep 1; pkill -KILL -f "$HFE2E" 2>/dev/null
+    T1=$(date +%s)
+    ok "render.sh through the engine: stopped over the ${R_E2E_BUDGET} s budget after $((T1-T0)) s (the engine's exit hang or a slow host; the film is still checked)"
+  else
+    wait "$RP"; rc=$?
+    T1=$(date +%s)
+    chk "render.sh renders the fixture through the real engine (exit 0, took $((T1-T0)) s)" "$rc" "0"
+    R_OUT=$(cat "$R_LOG")
+    echo "$R_OUT" | grep -q "30fps · draft · 1 workers" && ok "the engine's own banner confirms 30 fps, the draft tier and one worker" || bad "the engine banner disagrees: $(echo "$R_OUT" | grep -a 'fps ·' | head -1)"
+    echo "$R_OUT" | grep -q "held     : 240 frames, 640x360, 30 fps, h264" && ok "the held card read the real film back" || bad "the held card did not print: $(echo "$R_OUT" | grep -a held | head -1)"
+  fi
+  HFFILM=$(ls -t "$HFE2E"/renders/*.mp4 2>/dev/null | head -1)
+  if [ -n "$HFFILM" ]; then
+    got=$(ffprobe -v error -select_streams v:0 -show_entries stream=codec_name,width,height,avg_frame_rate,nb_frames -of csv=p=0 "$HFFILM" 2>/dev/null)
+    chk "the film the engine left is the whole 8 s at the composition's own size" "$got" "h264,640,360,30/1,240"
+  else
+    bad "the engine left no film under renders/"
+  fi
+  pkill -f "$HFE2E" 2>/dev/null || true
 fi
 
 printf '\n'

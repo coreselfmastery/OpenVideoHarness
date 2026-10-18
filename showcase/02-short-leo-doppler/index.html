@@ -4,11 +4,10 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1080, height=1920" />
     <title>为什么低轨卫星的信号会"变调"</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link
-      rel="stylesheet"
-      href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@500;800&display=block"
-    />
+    <!-- every font the film asks for, declared locally (the #11 rule): Noto Sans SC 500 and 800 as
+         Google's own woff2 subsets (assets/fonts/, 36 faces) with their unicode-ranges kept — the same
+         bytes the CDN would serve, fetched once at render time from the project instead of the network -->
+    <link rel="stylesheet" href="assets/fonts/faces.css" />
     <script src="node_modules/gsap/dist/gsap.min.js"></script>
     <style>
       :root {

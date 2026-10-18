@@ -84,6 +84,10 @@
 #                               engine: ClaudeAnimationBase, a page that writes window.film, HyperFrames (a composition without it gets its own
 #                               runtime); lossless PNGs in <project>/out/frames; --strip: every frame of a span and one picture of them all;
 #                               --covers: the page's covers (window.film.covers; canvas-film COVERS, picked by cue) in <project>/out/covers
+#   bake <project|page.html> [--out scene.png] [--at t] [--hide sel,sel…] [--dpr 2]   the static scene frozen into one lossless PNG
+#                               (assets/scene.png): what the compositor would re-run every frame although it never changes — a backdrop-filter
+#                               blur over static content, stacked glass — becomes one image the page's cheap twin blits (the animated layer,
+#                               [data-bake-hide] or --hide, stays live on top); tools/kaggle/fixture/css-cost is the worked example
 #   render <project|page.html> [--out f.mp4] [--fps 30] [--range a:b | --frames k0:k1] [--dpr 2] [--workers 4] [--crf 16] [--gop 60] [--png]
 #                               an MP4 drawn through the page contract (the canvas engine, ClaudeAnimationBase, any page that writes
 #                               window.film): parallel chunks into x264, BT.709 tv range, a keyframe every --gop frames, <out>.render.json
@@ -581,6 +585,7 @@ cmd_textcheck() { # canvas text covered or too faint (tools/textcheck/textcheck.
   exec node "$ROOT/tools/textcheck/textcheck.mjs" --browser "$b" "$@"
 }
 cmd_frames() { cmd_film_tool frames "$@"; }   # frames drawn from a page through the page contract (tools/film/frames.mjs)
+cmd_bake() { cmd_film_tool bake "$@"; }       # the static scene frozen into one PNG (tools/film/bake.mjs) — the pre-computed shared asset
 cmd_fonts() { # check: through the page contract (tools/film/fonts.mjs); list and subset read font files (tools/fonts.py, fontTools)
   case "${1:-}" in
     check) shift; cmd_film_tool fonts "$@" ;;
@@ -610,7 +615,7 @@ film_browser() { # film_browser <command> [dir]: the browser the page-contract t
   fi
   echo "$b"
 }
-cmd_film_tool() { # $1: frames | render | determinism | cues | fonts | patch (tools/film/<it>.mjs)
+cmd_film_tool() { # $1: frames | bake | render | determinism | cues | fonts | patch (tools/film/<it>.mjs)
   local tool=$1 b; shift
   [ $# -gt 0 ] || { cmd_usage "$tool"; exit 1; }
   # a whole standard or studio film is made after gate ①: its decision on record (CLAUDE.md 关卡); a part (look-dev, a
@@ -983,7 +988,7 @@ case "${2:-}" in -h|--help)   # `bin/vh <command> -h` prints its usage instead o
   case "$1" in captions|readcheck|review|storyboard|rhythm|cover-preview|voices|mix|recipes|sfx|qa) ;;   # these print their own, fuller help
     tts) cmd_usage tts; echo; exec python3 "$ROOT/tools/audio/tts.py" -h ;;   # + every flag, without building the mlx-audio environment first
     pace) cmd_usage pace; echo; exec python3 "$ROOT/tools/audio/pace.py" -h ;;
-    frames|render|determinism|cues|patch) cmd_usage "$1"; echo; exec node "$ROOT/tools/film/$1.mjs" -h ;;   # + every flag
+    frames|render|determinism|cues|patch|bake) cmd_usage "$1"; echo; exec node "$ROOT/tools/film/$1.mjs" -h ;;   # + every flag
     *) cmd_usage "$1" && exit 0 ;; esac ;;
 esac
 
@@ -994,7 +999,7 @@ case "${1:-help}" in
   recipes) shift; python3 "$ROOT/tools/recipes.py" "$@" ;;
   review) shift; cmd_review "$@" ;;
   desk) shift; cmd_desk "$@" ;;
-  new) shift; cmd_new "$@" ;; style) shift; cmd_style "$@" ;; readcheck) shift; cmd_readcheck "$@" ;; textcheck) shift; cmd_textcheck "$@" ;; frames) shift; cmd_frames "$@" ;; render) shift; cmd_film_tool render "$@" ;; fonts) shift; cmd_fonts "$@" ;; determinism) shift; cmd_film_tool determinism "$@" ;; cues) shift; cmd_film_tool cues "$@" ;; patch) shift; cmd_film_tool patch "$@" ;;
+  new) shift; cmd_new "$@" ;; style) shift; cmd_style "$@" ;; readcheck) shift; cmd_readcheck "$@" ;; textcheck) shift; cmd_textcheck "$@" ;; frames) shift; cmd_frames "$@" ;; bake) shift; cmd_bake "$@" ;; render) shift; cmd_film_tool render "$@" ;; fonts) shift; cmd_fonts "$@" ;; determinism) shift; cmd_film_tool determinism "$@" ;; cues) shift; cmd_film_tool cues "$@" ;; patch) shift; cmd_film_tool patch "$@" ;;
   storyboard) shift; cmd_storyboard "$@" ;; rhythm) shift; cmd_rhythm "$@" ;; cover-preview) shift; cmd_cover_preview "$@" ;; effort) shift; cmd_effort "$@" ;; sync-agents) cmd_sync_agents ;; hf-init) shift; cmd_hf_init "$@" ;; sheet) shift; cmd_sheet "$@" ;; check) shift; cmd_check "$@" ;; gif) shift; cmd_gif "$@" ;; deliver) shift; cmd_deliver "$@" ;; clean) shift; cmd_clean "$@" ;;
   help|-h|--help) cmd_help ;;
   *) { echo "unknown command: $1"; echo; cmd_help; } >&2; exit 1 ;;

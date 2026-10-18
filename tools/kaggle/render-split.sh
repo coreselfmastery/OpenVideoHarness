@@ -13,10 +13,14 @@
 #   --tier draft|final  the encode: draft = NVENC p4 cq 28 (x264: crf 28, faster) — a review pass; final = NVENC p7
 #                       cq 19 (x264: crf 16, medium) — the master. No --tier: the repo's own master settings
 #                       (NVENC p4 cq 16 / x264 crf 16 medium)
+#   --res 480p|720p…    the output's short side in lines (480, 540, 720, 1080): the page keeps its own layout,
+#                       Chrome draws it at a fractional deviceScaleFactor — a 720p draft of a 1080p film is the
+#                       same picture at 44% of the pixels, both halves at once. The master stays full size
 #   --encoder …         x264 or nvenc (default: nvenc when tools/kaggle/setup.sh probed it, else x264)
 #   --gpu-a N --gpu-b N which card encodes each half (default A=0, B=the last card); a warning when they are the same
 #   --workers N         browsers per half (default 1: two halves = two browsers; the box has to carry them)
-#   --fps N             as render.sh: the composition's own data-fps is kept at 30 or less, 30 when it says nothing
+#   --fps N             as render.sh: 30 is the default (the composition's own data-fps is kept at 30 or less;
+#                       a declared 60 is rendered at 30 unless --fps says otherwise)
 #   --crf N --preset P  the encode settings outright (overrides --tier; P is p1–p7 for nvenc)
 #   --out FILE          default <project>/renders/<project>.mp4
 #   --skip-determinism  don't run `bin/vh determinism` first (it refuses a page whose frames depend on what came before
@@ -37,7 +41,7 @@ set -euo pipefail
 unset CDPATH
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
-usage() { sed -n '2,41p' "$0"; }
+usage() { sed -n '2,39p' "$0"; }
 case "${1:-}" in
   -h|--help) usage; exit 0 ;;
   "") usage >&2; exit 1 ;;
@@ -47,7 +51,7 @@ case "$PROJ" in
   -*) printf '\033[31m✗\033[0m the project folder comes first: tools/kaggle/render-split.sh <project> [options]\n' >&2; exit 1 ;;
 esac
 
-AT=""; TIER=""; ENCODER=""; GPU_A=""; GPU_B=""; WORKERS=1; FPS_OPT=""; CRF=""; PRESET=""; OUT=""
+AT=""; TIER=""; ENCODER=""; GPU_A=""; GPU_B=""; WORKERS=1; FPS_OPT=""; CRF=""; PRESET=""; OUT=""; RES=""
 SKIP_DET=0; DRY=0; KEEP=0; pass=()
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -62,6 +66,8 @@ while [ $# -gt 0 ]; do
     --workers=*) WORKERS=${1#*=} ;;
     --fps|-f) FPS_OPT=${2:?--fps needs a number}; shift ;;
     --fps=*) FPS_OPT=${1#*=} ;;
+    --res) RES=${2:?--res needs the short side in lines, like 720p}; shift ;;
+    --res=*) RES=${1#*=} ;;
     --crf) CRF=${2:?--crf needs a number}; shift ;;
     --crf=*) CRF=${1#*=} ;;
     --preset) PRESET=${2:?--preset needs a name}; shift ;;
@@ -77,6 +83,11 @@ while [ $# -gt 0 ]; do
 done
 case "$TIER" in draft|final|"") ;; *) printf '\033[31m✗\033[0m --tier: draft or final, not "%s"\n' "$TIER" >&2; exit 1 ;; esac
 case "$WORKERS" in ''|*[!0-9]*|0) printf '\033[31m✗\033[0m --workers: a whole number ≥ 1\n' >&2; exit 1 ;; esac
+R=""
+if [ -n "${RES:-}" ]; then
+  R=${RES%p}   # 720p and 720 both mean 720 lines
+  case "$R" in ''|*[!0-9]*|0) printf '\033[31m✗\033[0m --res: the short side in lines, like 480p, 720 or 1080p — not "%s"\n' "$RES" >&2; exit 1 ;; esac
+fi
 for v in ${GPU_A:+"$GPU_A"} ${GPU_B:+"$GPU_B"}; do
   case "$v" in ''|*[!0-9]*) printf '\033[31m✗\033[0m --gpu-a/--gpu-b: whole card numbers\n' >&2; exit 1 ;; esac
 done
@@ -108,24 +119,42 @@ def attr(name, where=None):
     m = re.search(r'\b' + name + r'="([\d.]+)"', where if where is not None else s)
     return m.group(1) if m else ""
 dur, fps = attr("data-duration", root), attr("data-fps", root)
+w, h = attr("data-width", root) or "1920", attr("data-height", root) or "1080"
 starts = sorted({float(x) for x in re.findall(r'\bdata-start="([\d.]+)"', s)})
-print(json.dumps({"duration": dur, "fps": fps, "starts": starts}))
+print(json.dumps({"duration": dur, "fps": fps, "w": w, "h": h, "starts": starts}))
 PY
 ) || { printf '\033[31m✗\033[0m could not read %s/index.html\n' "$PROJ" >&2; exit 1; }
 DUR=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["duration"])')
 DFPS=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["fps"])')
+PW=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["w"])')
+PH=$(printf '%s' "$meta" | python3 -c 'import json,sys; print(json.load(sys.stdin)["h"])')
 [ -n "$DUR" ] || { printf '\033[31m✗\033[0m the composition has no data-duration: a split needs the length\n' >&2; exit 1; }
 awk -v d="$DUR" 'BEGIN{exit !(d < 30)}' && { printf '\033[31m✗\033[0m %s s is too short to split (two browser startups would eat the gain; render.sh renders it whole)\n' "$DUR" >&2; exit 1; }
 
 if [ -n "$FPS_OPT" ]; then FPS=$FPS_OPT; fps_note="fps $FPS (yours)"
 elif [ -z "$DFPS" ]; then FPS=30; fps_note="fps 30 (no data-fps; made explicit)"
 elif awk -v d="$DFPS" 'BEGIN{exit !(d<=30)}'; then FPS=$DFPS; fps_note="fps $FPS (the composition's own)"
-else FPS=$DFPS; fps_note="fps $FPS (the composition asks for it; --fps 30 would halve the frames if its spec allows)"
+else FPS=30; fps_note="fps 30 (the default here; the composition declares $DFPS — pass --fps $DFPS to keep every frame of it)"
 fi
 FPS=$(printf '%s' "$FPS" | awk '{printf "%d", ($1==int($1))?$1:int($1+0.5)}')
 [ "$FPS" -ge 1 ] || { printf '\033[31m✗\033[0m fps came out as %s\n' "$FPS" >&2; exit 1; }
 N=$(python3 -c "import math; print(math.ceil($DUR*$FPS-1e-6))")
 [ "$N" -ge 4 ] || { printf '\033[31m✗\033[0m the composition works out to $N frames: nothing to split\n' >&2; exit 1; }
+
+# ── --res: the short side of the video in lines, both halves at the same fractional deviceScaleFactor ─
+DPR=""; res_note=""
+if [ -n "$R" ]; then
+  DPR=$(awk -v l="$R" -v w="$PW" -v h="$PH" 'BEGIN{short=(w<h?w:h); printf "%.4g", l/short}')
+  if awk -v d="$DPR" 'BEGIN{exit !(d<0.25)}'; then
+    printf '\033[31m✗\033[0m --res %sp on a %sx%s page is dpr %s: under the 0.25 floor\n' "$R" "$PW" "$PH" "$DPR" >&2
+    exit 1
+  fi
+  if awk -v d="$DPR" 'BEGIN{exit !(d>1.0001)}'; then
+    printf '\033[31m✗\033[0m --res %sp on a %sx%s page is dpr %s: more pixels than the page has (--res names a draft tier, fewer pixels; --output-resolution on the engine is the supersampler)\n' "$R" "$PW" "$PH" "$DPR" >&2
+    exit 1
+  fi
+  res_note="res      : $(awk -v w="$PW" -v h="$PH" -v d="$DPR" 'BEGIN{printf "%dx%d", int(w*d+0.5), int(h*d+0.5)}') (the page's own layout, drawn at dpr $DPR — a ${R}p draft)"
+fi
 
 # ── the cut: a scene cut nearest the middle (or to --at), never nearer an end than a quarter of the film ───────
 K=$(python3 - "$DUR" "$FPS" "$N" "$AT" "$meta" <<'PY'
@@ -272,6 +301,7 @@ fi
 enc_note=$([ "$ENCODER" = nvenc ] && printf 'h264_nvenc %s cq %s, half A on GPU %s and half B on GPU %s' "$PRESET" "$CRF" "$GPU_A" "$GPU_B" \
   || printf 'x264 %s crf %s on the CPU' "$PRESET" "$CRF")
 printf '\033[36m→\033[0m %s\n' "$fps_note"
+[ -n "$res_note" ] && printf '\033[36m→\033[0m %s\n' "$res_note"
 printf '\033[36m→\033[0m project  : %s (%s s, %s frames at %s fps)\n' "$PROJ" "$DUR" "$N" "$FPS"
 printf '\033[36m→\033[0m cut      : frame %s (t=%s s) — %s\n' "$KCUT" "$(awk -v k="$KCUT" -v f="$FPS" 'BEGIN{printf "%.3f", k/f}')" "$cut_note"
 printf '\033[36m→\033[0m encode   : %s\n' "$enc_note"
@@ -280,7 +310,7 @@ printf '\033[36m→\033[0m browser  : %s (both halves on GPU 0: the EGL device h
 
 segcmd() { # segcmd <a> <b> <gpu> <logfile>: the render.mjs line for one half. exec, so the half is the
   # node process itself: a stop signal to it is the one render.mjs handles (it deletes its own chunks)
-  printf '%s\n' "exec node $ROOT/tools/film/render.mjs '$PROJ' --force --browser '$CHROME' --frames $1:$2 --fps $FPS --workers $WORKERS --gop $GOP --out '$WORK/seg$3.mp4' --encoder $ENCODER --crf $CRF --preset $PRESET --gpu $4"
+  printf '%s\n' "exec node $ROOT/tools/film/render.mjs '$PROJ' --force --browser '$CHROME' --frames $1:$2 --fps $FPS ${DPR:+--dpr $DPR} --workers $WORKERS --gop $GOP --out '$WORK/seg$3.mp4' --encoder $ENCODER --crf $CRF --preset $PRESET --gpu $4"
 }
 if [ "$DRY" = 1 ]; then
   printf '\033[36m→\033[0m dry run — the two halves would be:\n'
