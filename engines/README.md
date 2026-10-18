@@ -213,6 +213,8 @@ npx remotion studio                        # 预览
 
 ## ManimGX（Python，uv 按项目安装）
 
+完整指南：[`manimgx.md`](manimgx.md)（什么时候用、全部旗标、限制、GPU/T4×2、什么时候回退 CE、Kaggle 排障）；速度实测与优化研究（缓存、Vulkan 队列、显存、异步、多进程）：[`manimgx-advanced.md`](manimgx-advanced.md)。三个配套工具：`tools/manimgx_probe_gpu.sh`（Kaggle 第一格跑，确认 T4 真的在渲）、`tools/manimgx_bench.sh`（本机测速出表）、`tools/manimgx_render.sh`（场景没改就跳过重渲）。
+
 Manim CE 已换下，改用 ManimGX（2026-10-18）：同一套 Manim CE Python API，Rust/wgpu GPU 核心逐帧绘制，Typst 排版公式，自带编码出 MP4。不装 LaTeX、ffmpeg、cairo、pango（都不需要）；无 GPU 时 Linux wheel 自带 lavapipe 在 CPU 上画。实测（showcase/03-math-fourier 已迁移）：25 s 成片，1080p30 在 2 核 CPU 上 40 s 渲完，草稿 480p15 约 11 s；`manimgx inspect` 自带 2D 布局检查（文字重叠/出画面/小字，有问题 exit 1）。
 
 ```bash
