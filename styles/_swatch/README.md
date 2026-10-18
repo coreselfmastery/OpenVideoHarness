@@ -98,10 +98,10 @@ def build(env): …          # 每个 Blender 进程调用一次：搭整个场�
 def apply(t, env): …       # 按 t（= k/30）直接设好每个会动的属性：t 的纯函数，不留跨帧状态
 ```
 
-`env` 里有 `W H FPS DUR FRAMES POSTER_T SPEC TITLE_EN TITLE_ZH MOTIF`（和 `lib.js` 同值）、`tokens`、`fonts`、`scene`、`quality`（final 或 draft）和 `hash(*xs)`（[0, 1)，跨机器一致，用来做手放抖动之类的"随机"）。
+`env` 里有 `W H FPS DUR FRAMES POSTER_T SPEC TITLE_EN TITLE_ZH MOTIF`（和 `lib.js` 同值）、`tokens`、`fonts`、`scene`、`quality`（final、draft 或 fast）和 `hash(*xs)`（[0, 1)，跨机器一致，用来做手放抖动之类的"随机"）。
 
 - **不打关键帧**：`apply` 直接设属性，渲染器逐帧 `apply(k/30)` 再渲。所以没有运动模糊；要运动模糊的项目按 `engines/blender.md` 逐帧采样成关键帧。
-- **画质**：正式版是 CPU 上的 Cycles，默认 64 spp、自适应阈值 0.02、OIDN 降噪，`use_animated_seed`（噪点随帧号变，仍是 t 的函数）；`--draft` 改用 GPU（Metal、OptiX、CUDA、HIP 或 oneAPI，都没有就用 CPU），默认 16 spp。渲出的 PNG 在 `out/<slug>/frames/`（草稿是 `frames-draft/`），再按 BT.709、tv range 编成和 HyperFrames 一样的 1080p `hf.mp4`（CRF 8，单线程，每次同样的字节），后面的检查、配乐、混音、编码、封面、联系表全部共用。
+- **画质**：Cycles 的设置统一由性能层（`tools/blender_perf.py`，`engines/blender-perf.md`）给出：反弹 6/3/3/4/2/4、间接 clamp 10、OIDN（RGB+Albedo+Normal，Accurate 预过滤）、合成器走 CPU、AgX。三档：**final** 是确定性锚——final-cpu 档（CPU、固定 spp、无时限、无 persistent data；乱序逐像素相同）；**draft** 是速度预览——draft 档（GPU：Linux 上 CUDA 优先（T4 无 RT 核，OptiX 在那没有 BVH 优势；有 RT 核的卡自己传 `--device optix`），Mac 上 Metal；自适应 0.1、每帧 120 s 上限、Simplify 开）；**fast** 是 GPU 上的 final 档（Kaggle T4 出画质样片用；确定性锚仍可用 `--quality final`）。渲出的 PNG 在 `out/<slug>/frames/`（草稿是 `frames-draft/`），再按 BT.709、tv range 编成和 HyperFrames 一样的 1080p `hf.mp4`（CRF 8，单线程，每次同样的字节），后面的检查、配乐、混音、编码、封面、联系表全部共用。
 - **为什么正式版用 CPU**【实测，M3 Max、Blender 5.2.2】：同一帧渲两次，CPU 上的 Cycles 逐像素相同；Metal 上的 Cycles 差一点（PSNR 92 dB），EEVEE 差得多一点（85 dB）。都在硬规则 1 的 45 dB 线以上，但这条流水线按体积上限爬 CRF，会把很小的差异放大成另一个 mp4（见"确定性"），所以和 HyperFrames 一样取逐像素相同的那一条路。代价是慢：`tabletop-miniature` 正式版每帧 15–19 s（32 spp），150 帧约 40 分钟；草稿每帧约 1.6 s，150 帧约 4 分钟。
 - **时间预算**：Blender 场景的默认超时是草稿 1800 s、正式 7200 s。正式渲染前先用 `--png --frames 3,90,140` 渲三帧，按每帧的时间估全片。
 - **`--png --frames 149,90,12`**：只渲这几帧，按这个顺序，写到 `out/<slug>/png-sample-w<N>/`（加 `--draft` 走 GPU）。看构图、调光的时候用它，几十秒一轮。

@@ -238,10 +238,10 @@ uv run manimgx inspect scene.py MyScene                        # 分镜/storyboa
 
 ## Blender，按需使用（部分验证）
 
-完整指南：[`blender.md`](blender.md)。**部分验证：维护者的 Mac 装了 Blender 5.2.2，风格样片 `tabletop-miniature` 用它渲染（`styles/_swatch/README.md` 的"Blender 场景"）；指南里项目用的两段式命令有几条还没跑过。渲染时间先渲 3–5 帧校准。**
+完整指南：[`blender.md`](blender.md)。**部分验证：维护者的 Mac 装了 Blender 5.2.2，风格样片 `tabletop-miniature` 用它渲染（`styles/_swatch/README.md` 的"Blender 场景"）；指南里项目用的两段式命令有几条还没跑过。渲染时间先渲 3–5 帧校准（现在有工具：`tools/blender_bench.sh`）。**
 
 - 安装：`brew install --cask blender`，也可以从官网下载。指南钉在 5.2 LTS（5.0 起只支持 Apple Silicon，Python API 有破坏性改动）。
-- 渲染用脚本方式，保证结果可复现，分两段：`blender -b --factory-startup --python build.py -- …` 生成 `scene.blend`，再 `blender -b scene.blend … -a` 渲 PNG 序列。同时固定随机种子，并烘焙好模拟缓存。
+- 渲染用脚本方式，保证结果可复现，分两段：`blender -b --factory-startup --python build.py -- …` 生成 `scene.blend`，再 `blender -b scene.blend … -a` 渲 PNG 序列。同时固定随机种子，并烘焙好模拟缓存。 Cycles 的设置由性能层给出（三档画像 draft/final/final-cpu，Kaggle 2×T4：CUDA 优先、ManimGX 用 GPU 0、Blender 绑 GPU 1）：[`blender-perf.md`](blender-perf.md)；配套工具 `tools/blender_perf.py`（画像 + `check` 自审计）、`tools/blender_run.sh`（绑卡与画像一条链）、`tools/blender_bench.sh`（校准出表）。
 - 能跑的样板：`styles/_swatch/blender_render.py`（逐帧 `apply(t)` 再渲，正式版走 CPU 求逐像素相同）、`blender_prep.py`（渲染前的静态检查和字体解析）和 `render.sh` 里的 `bl_run`（`env -i` 加 `sandbox-exec`）。调用 bpy 的文件按 GPL-3.0-or-later 分发（见指南的"许可证"）。
 - 探索阶段要用 MCP，就用 [`blender-mcp-ultra`](blender-mcp-ultra.md)（carlosh7/blender-mcp，MIT，248 个工具）：强制 token、AST 拦截在网关和 addon 各跑一次、限速——这些都实测过；它也是三个 MCP 里唯一官方支持 headless 的（CI 就是这么跑的）。**默认仍不用**：要用先问用户，放在虚拟机或单独的 macOS 用户下。官方 MCP 和社区的 `ahujasid/mcp-for-blender` 则会直接执行 LLM 生成的 Python，没有任何防护，不推荐。没有沙箱，就不要让 LLM 生成的 bpy 代码经过任何 MCP 执行。管线里跑 agent 写的脚本，加静态检查、`sandbox-exec` 和 `env -i`（见指南的"安全"一节）。配套工具：`tools/blender_mcp_setup.sh`（装网关、数工具；`--headless` 再起一个一次性 `blender -b` 服务器，把 token 认证、AST 拦截、建对象、Cycles 渲 PNG 全部证一遍）。
 

@@ -186,7 +186,7 @@ cd ~/OpenVideoHarness && claude
 
 <p align="center"><img src="docs/assets/blender-strip.jpg" width="820" alt="介绍片开场的几个时刻：玻璃卡片里的地球、拉远成星系、爆开、压平成影片之海，都是 Blender 渲的"></p>
 
-介绍片的开场就是这样做的：118 万颗星组成一个星系，15.8 秒、475 帧，1080p 在 M3 Max 上渲了 1 小时 28 分。脚本在沙箱里跑，不联网，也拿不到你的 API key；长渲染分块、可以续渲。什么时候值得用、怎么接进片子、踩过哪些坑，见 [engines/blender.md](engines/blender.md)。探索阶段另有 MCP 一条路：`blender-mcp-ultra`（248 个工具、强制 token、AST 拦截，按规矩不进管线），见 [engines/blender-mcp-ultra.md](engines/blender-mcp-ultra.md)；一条命令装好并验证：`tools/blender_mcp_setup.sh`。
+介绍片的开场就是这样做的：118 万颗星组成一个星系，15.8 秒、475 帧，1080p 在 M3 Max 上渲了 1 小时 28 分。脚本在沙箱里跑，不联网，也拿不到你的 API key；长渲染分块、可以续渲。什么时候值得用、怎么接进片子、踩过哪些坑，见 [engines/blender.md](engines/blender.md)。探索阶段另有 MCP 一条路：`blender-mcp-ultra`（248 个工具、强制 token、AST 拦截，按规矩不进管线），见 [engines/blender-mcp-ultra.md](engines/blender-mcp-ultra.md)；一条命令装好并验证：`tools/blender_mcp_setup.sh`。 Cycles 的三档速度/画质画像（draft/final/final-cpu）与 Kaggle 2×T4 的 GPU 分工（CUDA 优先；ManimGX 用 GPU 0，Blender 绑 GPU 1）见 [engines/blender-perf.md](engines/blender-perf.md)（对着 Blender 5.2.2 逐项实测）；配套 `tools/blender_perf.py` / `tools/blender_run.sh` / `tools/blender_bench.sh`。
 
 ## 声音
 

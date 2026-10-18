@@ -8,7 +8,7 @@
 
 1. **路线**：`blender -b` 两段式：`build`（`timeline.json` → `scene.blend`）和 `render`（`scene.blend` → PNG 序列）。合成走 HyperFrames 或 ffmpeg。MCP 只在探索阶段用，不进管线，而且要在沙箱里用；要用 MCP 就用 `blender-mcp-ultra`（248 个工具、强制 token、AST 双侧拦截，见 [`blender-mcp-ultra.md`](blender-mcp-ultra.md)）。
 2. **版本**：固定 **5.2 LTS**（2026-07-14 发布，维护到 2028-07）[1][2]。5.0 起只支持 Apple Silicon，macOS ≥ 13 [3]，Python API 有破坏性改动，凭 2.8–4.x 的记忆写的脚本多半会报错。
-3. **引擎分工**：分镜和 draft 用 EEVEE（或 Workbench），final 用 Cycles（Metal）加 OIDN，风格化镜头可以直接 EEVEE final。
+3. **引擎分工**：分镜和 draft 用 EEVEE（或 Workbench），final 用 Cycles（Metal）加 OIDN，风格化镜头可以直接 EEVEE final。Cycles 的速度与画质设置自 2026-10-18 起由性能层统一给出：三档画像（draft / final / final-cpu），见 [`blender-perf.md`](blender-perf.md)。
 4. **确定性**：只承诺"同一台机器、同一 Blender 构建、同一设置"下，按硬规则 1 的口径（无损 PNG，PSNR ≥ 45 dB）乱序渲染一致。渲好的 PNG 序列是带哈希的素材，合成时不重渲。
 5. **纯函数**：时间线用我们自己的缓动、样条和节拍函数，逐帧采样成关键帧；不用 Python handler，不靠实时模拟。
 6. **合成与颜色**：默认交 PNG（straight alpha，视图变换已烘进去）；EXR 是 scene-linear，进 ffmpeg 要显式 `-apply_trc iec61966_2_1`；最后一步 H.264 要写 BT.709 矩阵和四个标签，否则饱和色偏 20 个色阶左右。
@@ -97,7 +97,7 @@ projects/<date>-<slug>/blender/
 
 ### 渲染预设与 render 命令
 
-预设的数值是起点，全部【推测】，以 5 帧校准为准：
+预设的数值是起点，全部【推测】，以 5 帧校准为准（校准现在有工具：`tools/blender_bench.sh`；Cycles 侧的设置矩阵与三档画像 draft/final/final-cpu 见 [`blender-perf.md`](blender-perf.md)，含 Kaggle 2×T4 的 GPU 分工：ManimGX 用 GPU 0，Blender 绑 GPU 1）：
 
 | 预设 | 引擎 | 关键设置 | 用途 |
 |---|---|---|---|
@@ -152,8 +152,8 @@ render 要带看门狗（沿用 `playbook/02` 的做法）、检查退出码、�
 
 | 来源 | 影响 | 对策 |
 |---|---|---|
-| Cycles `Time Limit` | 到时限就停，哪怕没到目标采样数 [6]，结果随机器速度变化 | 固定为 0（关） |
-| 自适应采样 | 像素是否停止取决于噪声估计；同设备是否逐位一致【推测：没找到官方说法】 | final 预设默认关自适应，固定 spp；要开就先做下面的验收 |
+| Cycles `Time Limit` | 到时限就停，哪怕没到目标采样数 [6]，结果随机器速度变化 | 锚（final-cpu）仍固定为 0；final 的 600 s 只是保险丝，跨机复现用 final-cpu（[`blender-perf.md`](blender-perf.md)“哪个设置拿走了确定性”） |
+| 自适应采样 | 像素是否停止取决于噪声估计；同机同设置逐位一致（实测 5.2.2：tabletop 第 30 帧单独渲 vs 顺序渲 PSNR=inf），跨机不同 | final-cpu 关（锚）；final/draft 开（同机逐位一致，跨机复现用 final-cpu，[`blender-perf.md`](blender-perf.md)） |
 | 设备 | 同一场景在 CPU、CUDA、OptiX 上渲出的像素不同（#101561）；Cycles 开发者回复：设备之间总会有差异，不算 bug，归因于硬件精度差异 [12] | 一个项目只用一种设备（Metal），不用 `METAL+CPU` |
 | OIDN 降噪 | 官方文档称不同设备之间可能有小的数值差异；RT 滤波器不具备时间稳定性 [10] | final 用默认（高质量）模式；降噪是逐帧的，可能闪 |
 | 版本 | 5.2 EEVEE 输出与 5.1 不同 [4] | `blender.lock` 钉死 |

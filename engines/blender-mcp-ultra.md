@@ -155,7 +155,7 @@ blender -b --factory-startup --python blender_headless_server.py
 
 ## Kaggle / CI 说明
 
-- Kaggle 上跑 Blender 本身要先装（官方 Linux tarball 解压即用，无需 root）；`blender -b` + headless 配方就是它的 CI 形态。2×T4 对 Cycles 有用（`OPTIX`/`CUDA`），但 **MCP 探索阶段的目的不是渲染速度**，CPU 小样就够；真渲染走管线脚本的分块渲染。
+- Kaggle 上跑 Blender 本身要先装（官方 Linux tarball 解压即用，无需 root）；`blender -b` + headless 配方就是它的 CI 形态。2×T4 对 Cycles 有用，但 **MCP 探索阶段的目的不是渲染速度**，CPU 小样就够；真渲染走管线脚本的分块渲染。要快样时：`tools/blender_mcp_setup.sh --headless --perf draft` 在服务器启动前把 draft 画像落到会话场景上（启动链应用，不经 code_guard；实测 5 步往返全过）——整套画像见 [`blender-perf.md`](blender-perf.md)。
 - 网关在 Kaggle（Linux）上 `pip install blender-mcp-ultra` 即装；token 自动生成在 `~/.config/blender-mcp/socket_token`。不要在 Kaggle 上开 SSE/REST 对公网（`MCP_SSE_HOST`）——token 不是为公网设计的。
 - 这条链路（headless 服务器 + 网关 + 248 工具 + Cycles CPU 小样）整体在 Linux 上实测过（见页首），Kaggle 只是同一配方换机器【实测 Linux + 推测（Kaggle 部分未跑）】。
 
