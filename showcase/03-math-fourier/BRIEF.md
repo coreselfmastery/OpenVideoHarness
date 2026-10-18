@@ -6,7 +6,7 @@
 
 ## Spec
 - Output: 1920x1080, 30 fps, target 23–24 s (18–25 s allowed), ~700 frames
-- Engine: Manim CE 0.21.0 (Cairo renderer), single scene `FourierSquareWave`
+- Engine: ManimGX 0.1.1 (Rust/wgpu core; was Manim CE 0.21.0 Cairo until 2026-10-18), single scene `FourierSquareWave`
 - Platform / audience: README showcase GIF/MP4 for OpenVideoHarness; autoplay, **muted**. Audience: curious undergrad / engineer who has heard "any signal is a sum of sines" but never watched it happen.
 - Language: en (math notation carries the content), narration: **none** while the picture was made (silent); English narration added afterwards (README › Soundtrack)
 - Deliverables: final.mp4, preview.gif (640 px, 15 fps, < 6 MB), sheet.png
@@ -37,7 +37,7 @@ Every frame is a pure function of ValueTrackers driven by the play() timeline; c
 2. No audio while the picture was made: timings come from the storyboard, not from a voiceover. (The narration added later was fitted to these timings.)
 3. Build with `-ql`; per iteration: contact sheet + strips of the add-a-harmonic move and the zoom move + a crop of the horn; bounding boxes printed; critique vs TASTE_CHECKLIST in NOTES.md.
 4. Uncertain facts go in NOTES.md.
-5. Final at 1080p30 (`manim -qh --fps 30`; plain `-qh` is 1080p60), gif, sheet.
+5. Final at 1080p30 (`manimgx render -r 1920x1080 --fps 30`; default fps is 60), gif, sheet.
 
 ## Acceptance
 - [ ] 18–25 s, 1920x1080, 30 fps; the picture render has no audio stream (the soundtrack is muxed on afterwards)
@@ -48,13 +48,13 @@ Every frame is a pure function of ValueTrackers driven by the play() timeline; c
 - [ ] final frame = the horn that stays at 1.179 while N grows (the "what you now know" frame)
 
 ## TYPE
-+ TYPE: 3b1b-style explainer. Manim CE, 1920x1080 30fps, bg #000000, text CMU Serif + LaTeX. Audience: undergrad.
++ TYPE: 3b1b-style explainer. ManimGX, 1920x1080 30fps (`render -r 1920x1080 --fps 30`), bg #000000, math in New Computer Modern (built-in Typst). Audience: undergrad.
 Bind one color per math entity for the whole video; symbol and its geometry share it: {target f(x): #9A9A9A, harmonic sin(nx)/n: #58C4DD, running sum: #FFFF00, overshoot: #FC6255}.
 Open on the concrete puzzle with the core object on screen; say why it matters within 30s. Concrete example before the general rule.
 Geometry first, then the equation. Equations appear whole, dim to 30%, then light up and get colored term by term.
 Keep the parent diagram visible (dimmed) when zooming into details; dim old layers, never delete them mid-argument.
 After a question card, hold 2.5s. Each play() 1–3s, then a 0.5–2s hold. No bounce, glow, particles, or bullet-list ending.
 Place objects only via a 6x6 anchor grid (A1–F6) in the animation area; print all bounding boxes and check overlaps before rendering.
-~~Narration via manim-voiceover; trigger visuals on bookmarks at {cue} words.~~ Silent video: no narration, no cues. (Picture phase; the narration added on 2026-10-01 follows the picture, not the other way round.)
+~~Narration via the engine's built-in say/word-cues.~~ Silent video: no narration, no cues. (Picture phase; the narration added on 2026-10-01 follows the picture, not the other way round.)
 
 <!-- from 01-math-science-explainer.md -->

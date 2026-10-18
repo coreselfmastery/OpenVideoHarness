@@ -13,7 +13,7 @@ every level), templates/TASTE_CHECKLIST.md (hard rule 4) and the engine docs (be
             playbook reads, not of everything: playbook/08, recipes/ and styles/ are read on demand and not counted
 engine    the engine docs counted at every level: the section of engines/README.md for the engine bin/vh new sets up,
           plus the guide the routing names in full (ANIMATION_GUIDE.md for 04 and 07, engines/editing.md for 09).
-          04 and 06 show one engine though their type docs allow two (04: HyperFrames for type-led videos; 06: Manim
+          04 and 06 show one engine though their type docs allow two (04: HyperFrames for type-led videos; 06: ManimGX
           and HyperFrames mixed). A film that spans two types reads both type docs.
 tools/ci.sh prints this table as a baseline. It never fails on the numbers; it fails when a file or a section it
 counts is missing, so the table cannot quietly shrink.
@@ -22,8 +22,8 @@ import json, sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-ENGINE = {"01": "Manim", "02": "HyperFrames", "03": "HyperFrames", "04": "ClaudeAnimationBase", "05": "HyperFrames",
-          "06": "Manim", "07": "ClaudeAnimationBase", "08": "HyperFrames", "09": "HyperFrames"}   # what bin/vh new sets up
+ENGINE = {"01": "ManimGX", "02": "HyperFrames", "03": "HyperFrames", "04": "ClaudeAnimationBase", "05": "HyperFrames",
+          "06": "ManimGX", "07": "ClaudeAnimationBase", "08": "HyperFrames", "09": "HyperFrames"}   # what bin/vh new sets up
 GUIDE = {"04": "engines/ClaudeAnimationBase/ANIMATION_GUIDE.md", "07": "engines/ClaudeAnimationBase/ANIMATION_GUIDE.md",
          "09": "engines/editing.md"}
 

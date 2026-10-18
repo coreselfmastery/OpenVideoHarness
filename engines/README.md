@@ -2,7 +2,7 @@
 
 新项目一律建在 `projects/<date>-<slug>/` 下。本目录里的东西是模板，不要直接在里面改。
 
-最快的方式是 `bin/vh new <type> <slug>`：它会建好目录、复制模板；手绘和 MV 类还会复制 ClaudeAnimationBase 并装好依赖，short、promo、data、meme 类会自动运行 `bin/vh hf-init` 装好 HyperFrames（离线失败时会提示稍后重跑）。加 `--engine canvas-film` 时，不管哪一类，都改成复制旁白驱动的 canvas 引擎（下面"canvas-film"一节）。只有 Remotion、Manim 要在建好目录后，按下面对应的一节手动初始化；MV 或论文类改用 HyperFrames 时，以及 edit 类（实验性，首选 HyperFrames，做法见 [`editing.md`](editing.md)），对项目目录单独运行一次 `bin/vh hf-init`。
+最快的方式是 `bin/vh new <type> <slug>`：它会建好目录、复制模板；手绘和 MV 类还会复制 ClaudeAnimationBase 并装好依赖，short、promo、data、meme 类会自动运行 `bin/vh hf-init` 装好 HyperFrames（离线失败时会提示稍后重跑）。加 `--engine canvas-film` 时，不管哪一类，都改成复制旁白驱动的 canvas 引擎（下面"canvas-film"一节）。只有 Remotion、ManimGX 要在建好目录后，按下面对应的一节手动初始化；MV 或论文类改用 HyperFrames 时，以及 edit 类（实验性，首选 HyperFrames，做法见 [`editing.md`](editing.md)），对项目目录单独运行一次 `bin/vh hf-init`。
 
 ## ClaudeAnimationBase（p5.js + p5.brush），已装好
 
@@ -211,36 +211,28 @@ npx remotion studio                        # 预览
 - 许可：个人和 3 人以内的公司免费，超过这个规模需要购买授权。
 - 官方 skills 已拉到本地：`references/repos/remotion-skills/skills/`。
 
-## Manim CE（Python），未安装
+## ManimGX（Python，uv 按项目安装）
 
-本机已有 MacTeX、cairo、pango、ffmpeg。
+Manim CE 已换下，改用 ManimGX（2026-10-18）：同一套 Manim CE Python API，Rust/wgpu GPU 核心逐帧绘制，Typst 排版公式，自带编码出 MP4。不装 LaTeX、ffmpeg、cairo、pango（都不需要）；无 GPU 时 Linux wheel 自带 lavapipe 在 CPU 上画。实测（showcase/03-math-fourier 已迁移）：25 s 成片，1080p30 在 2 核 CPU 上 40 s 渲完，草稿 480p15 约 11 s；`manimgx inspect` 自带 2D 布局检查（文字重叠/出画面/小字，有问题 exit 1）。
 
 ```bash
 cd projects/<date>-<slug>
-uv init --bare --python 3.12 && uv add manim     # 实测：Manim CE 0.21.0 / Python 3.12 / macOS
-uv add manim-voiceover                           # 只有要配旁白时才装
-export PYTHONWARNINGS=ignore::SyntaxWarning      # 压掉 pydub 在 3.12 下的警告刷屏
-uv run manim -ql scene.py MyScene                # 草稿：480p15
-uv run manim -qh --fps 30 scene.py MyScene       # 成片：1080p30（-qh 默认是 60fps）
+uv init --bare --python 3.14 && uv add manimgx   # 实测：manimgx 0.1.1 / Python 3.14.8；ManimGX 要求 >=3.13，uv 会自己下载
+uv run manimgx render -r 854x480 --fps 15 scene.py MyScene    # 草稿
+uv run manimgx render -r 1920x1080 --fps 30 scene.py MyScene   # 成片 1080p30（不带 --fps 默认 60）
+uv run manimgx inspect scene.py MyScene                        # 分镜/storyboard + 布局检查，不渲染视频
 ```
 
 - 用 `--bare`：普通的 `uv init` 会在项目里多生成 `.git`、`main.py`、`README.md`、`.python-version`。
-- **4K**：`-qk --fps 30`（`-qk` 默认 60 fps），画面比例和构图不变。
-- **竖屏**：只给 `-r 1080,1920` 时，`frame_width` 还是横屏的 14.22，16:9 的画面缩在中间一条，`to_edge(UP)` 落在画面中段（0.21 实测）。在项目里写一个 `manim.cfg`，Manim 才会按画幅重算 `frame_width`（8 × 1080 / 1920 = 4.5），画面铺满：
-
-  ```ini
-  [CLI]
-  pixel_width = 1080
-  pixel_height = 1920
-  frame_rate = 30
-  ```
-
-  渲染时要带 `-r`：`-ql`、`-qh`、`-qk` 都会把像素尺寸改回横屏预设，而 `frame_width` 留在 4.5，结果是一张横屏片、只露出竖屏画面中间的一段（0.21 实测）。草稿 `uv run manim -ql -r 540,960 scene.py MyScene`，成片 `uv run manim -r 1080,1920 --fps 30 scene.py MyScene`（不带 `-q`），4K `-r 2160,3840 --fps 30`。场景里的坐标照旧以画面高 8 个单位为准，横向只剩 4.5 个单位，按竖屏重新排版。
-- 【综合】选 Python 3.12 是求稳；如果装不上，以 docs.manim.community 的安装说明为准，并把最终可用的命令记进 `LESSONS.md`。
-- manim-voiceover 需要的 TTS 后端，按它的 README 选装。
-- 锚点网格和包围盒审计有现成实现：`showcase/03-math-fourier/scenes/style.py`，可以复制到自己的项目里用。
-- 写代码前先读 `references/repos/3brown1blue/src/three_b1b/skill/SKILL.md` 里的 Gotchas。
-- 注意 CE 和 ManimGL 的 API 不能混用，参考 `references/repos/3brown1blue/src/three_b1b/skill/rules/manimgl-differences.md`。
+- **4K**：`-r 3840x2160 --fps 30`，画面比例和构图不变。
+- **竖屏**：`-r 1080x1920`（或场景里 `m.config.pixel_width, m.config.pixel_height = 1080, 1920`）。竖屏的 frame 自动变成 8 宽 × ~14.2 高（短边恒为 8 个单位），CE 那套 `manim.cfg` 重算 `frame_width` 的麻烦不存在了；中间 8×8 的方块横竖屏都在，按竖屏重新排版即可。
+- **配音/按词触发**：引擎内置（不再装 manim-voiceover）：`self.say("…[x squared]…", anim1, anim2)` 把动画对到方括号里的词上；`self.add_sound("click.wav")` 直接加声音。本仓库自己的音频先行管线（`tools/build_audio.sh`、timeline、foley）照旧，两边不冲突。
+- **公式**：`MathTex`/`Tex` 用内置 mitex 转 Typst 排版（New Computer Modern 字体，和 CE 的 CMU 同源），不装 LaTeX；宏包和 `\def` 不支持，报错会带 TypstError。
+- **GPU（Kaggle T4×2 等 Linux 机器）**：走 Vulkan，每个进程选一个高性能 adapter；看不到 GPU 时自动落到自带 lavapipe（CPU），不用另装任何东西。Kaggle 上跑：先 `curl -LsSf https://astral.sh/uv/install.sh | sh` 装 uv；如需真正吃到 T4，`sudo apt-get install -y libvulkan1`，必要时 `export VK_ICD_FILELIST=/usr/share/vulkan/icd.d/nvidia_icd.json`；`vulkaninfo --summary` 里能看到 T4 即生效。两块 T4 可以同时跑两个渲染进程（比如草稿和成片、或两个项目各一个）。
+- 输出写在场景文件旁边（`-o` 可指定路径）；颜色为 limited-range 且带标签（matrix smpte170m / transfer sRGB / primaries bt709）。配乐混音那一步本来就要重编码，交付重编码到 BT.709 的规则不变（playbook/10）。
+- 锚点网格和包围盒审计有现成实现：`showcase/03-math-fourier/scenes/style.py`（已迁到 ManimGX），可以复制到自己的项目里用。
+- 写代码前先读 `references/repos/3brown1blue/src/three_b1b/skill/SKILL.md` 开头的 Gotchas（CE 的坑在 GX 里大多还在，同一个 API）。
+- 【迁移注意】（CE 代码搬过来时）：`from manim import *` → `from manimgx import *`（或 `import manimgx as m`）；`rate_functions.smooth` 这类模块路径没了，函数都在包上（`m.smooth`、`m.ease_in_out_sine`）；`manimgx` 导出一个 `Path` mobject 类，`pathlib.Path` 要起别名；`import numpy as np` 要显式写；质量旗标 `-ql/-qh` → `-r 宽x高 --fps`。CE 与 ManimGL 不能混用的老提醒作废（GX 实现的就是 CE 的 API）。
 
 ## Blender，按需使用（部分验证）
 

@@ -9,7 +9,7 @@ import itertools
 from pathlib import Path
 
 import numpy as np
-from manim import VMobject, ManimColor, config
+from manimgx import VMobject, ManimColor, config
 
 # ── Palette: one colour per math entity, fixed for the whole video ─────────────
 BG = ManimColor("#000000")

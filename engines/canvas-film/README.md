@@ -6,7 +6,7 @@
 
 - 旁白撑着的横屏长片：几分钟到十几分钟的科普、人物、讲解，几十上百个镜头，镜头跟着旁白的字切。
 - 画面是代码画的 2D：纸面、卡片、图表、示意图、照片和截图。Three.js 底层以后再收进来，现在没有。
-- 不合适的：DOM 排版和 GSAP 动效为主的短片（HyperFrames）、手绘角色（ClaudeAnimationBase）、数学推导（Manim）。
+- 不合适的：DOM 排版和 GSAP 动效为主的短片（HyperFrames）、手绘角色（ClaudeAnimationBase）、数学推导（ManimGX）。
 
 ## 建项目
 

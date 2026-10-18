@@ -129,12 +129,12 @@ ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 c_ok=$'\033[32m✓\033[0m'; c_no=$'\033[31m✗\033[0m'; c_wa=$'\033[33m!\033[0m'
 
 declare -a TYPES=(
-  "math:01-math-science-explainer:数学/科学原理讲解（Manim）"
+  "math:01-math-science-explainer:数学/科学原理讲解（ManimGX）"
   "short:02-knowledge-short:知识科普短视频，含竖屏（HyperFrames）"
   "promo:03-product-promo:产品宣传/发布片（HyperFrames）"
   "mv:04-lyric-music-video:歌词视频/MV（ClaudeAnimationBase 或 HyperFrames）"
   "data:05-data-story:数据叙事/动画图表（HyperFrames + SVG）"
-  "paper:06-paper-explainer:论文讲解/会议视频（Manim + HyperFrames）"
+  "paper:06-paper-explainer:论文讲解/会议视频（ManimGX + HyperFrames）"
   "handdrawn:07-hand-drawn:手绘/水彩/白板/剪纸/角色短片（ClaudeAnimationBase）"
   "meme:08-brutalist-meme:网络梗/野兽派快剪（HyperFrames）"
   "edit:09-editing-talking-head:真人素材剪辑/口播，用户自己的素材（实验中；HyperFrames）"
@@ -173,9 +173,9 @@ cmd_doctor() {
   chk ffmpeg "ffmpeg -version" "$(hint "brew install ffmpeg" "sudo apt install ffmpeg, or your package manager")"
   chrome=$(chrome_path) || chrome=""
   [ -n "$chrome" ] && echo "$c_ok chrome  $chrome" || echo "$c_no chrome  ($(hint "install Google Chrome" "sudo apt install chromium, or npx playwright install chromium"), or set CHROME_PATH)"
-  chk python3 "python3 --version" "needed for audio analysis / Manim"
-  chk uv "uv --version" "$(hint "brew install uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"); bin/vh tts, beats, music, sfx, qa, sheet and mix profiles run through it, Manim envs too"
-  chk latex "latex --version" "optional: $(hint "MacTeX: brew install --cask mactex-no-gui" "TeX Live: sudo apt install texlive-latex-extra"), needed for Manim MathTex" "$c_wa"
+  chk python3 "python3 --version" "needed for audio analysis / ManimGX"
+  chk uv "uv --version" "$(hint "brew install uv" "curl -LsSf https://astral.sh/uv/install.sh | sh"); bin/vh tts, beats, music, sfx, qa, sheet and mix profiles run through it, ManimGX envs too (Python 3.14: uv downloads it if missing)"
+  chk latex "latex --version" "optional, no longer needed: ManimGX typesets formulas with built-in Typst (no LaTeX install)" "$c_wa"
   chk git "git --version" "needed by references/fetch.sh"
   [ -d "$ROOT/engines/ClaudeAnimationBase/node_modules" ] && echo "$c_ok ClaudeAnimationBase deps installed" || echo "$c_wa ClaudeAnimationBase deps missing → bin/vh setup"
   # a real headless WebGL2 context with render.mjs's default flags; Linux without a GPU only gets one in software (--soft-gl)
@@ -413,7 +413,7 @@ cmd_new() {
       4:5) res=portrait; frameh=1350 ;; 3:4) res=portrait; frameh=1440 ;;   # feed posts (Instagram, 小红书): the portrait scaffold, shorter
       *) echo "unknown aspect: $aspect (16:9 | 9:16 | 1:1 | 4:5 | 3:4)"; exit 1 ;; esac
     case "$type" in short|promo|data|meme) ;;
-      math|paper) echo "--aspect: Manim renders 16:9 here; for a vertical film set pixel_width/pixel_height in manim.cfg (engines/README.md, Manim 竖屏)"; exit 1 ;;
+      math|paper) echo "--aspect: ManimGX renders 16:9 here; for a vertical film render with -r 1080x1920 or set m.config.pixel_width/pixel_height in the scene (engines/README.md, ManimGX 竖屏)"; exit 1 ;;
       handdrawn|mv) echo "--aspect: the hand-drawn engine (ClaudeAnimationBase) draws 1920x1080 only"; exit 1 ;;
       *) echo "--aspect works for short, promo, data and meme (HyperFrames); $type follows its footage (video-types/09-editing-talking-head.md)"; exit 1 ;; esac
     if [ -n "$frameh" ] && [ "$outres" = 4k ]; then echo "--res 4k: HyperFrames has no 4K preset for $aspect; it renders 1080x$frameh only"; exit 1; fi
@@ -425,7 +425,7 @@ cmd_new() {
   if [ -z "$watch" ]; then   # where it is mostly watched sets the text-size floor (playbook/03 §4); the frame gives the default
     case "$res:$type" in portrait:*|square:*|:edit) watch=phone ;; landscape:meme) watch=feed ;; *) watch=desktop ;; esac
   fi
-  local frame=$res; case "$type" in math|paper) frame=${frame:-landscape} ;; esac   # Manim renders landscape
+  local frame=$res; case "$type" in math|paper) frame=${frame:-landscape} ;; esac   # ManimGX renders landscape
   case "$watch:$frame" in   # a frame and a target that contradict each other (the feed floor is for a 1920-wide frame)
     feed:portrait|feed:square) echo "--watch feed is for a landscape film shown in a phone feed; a ${aspect:-vertical} frame is already --watch phone"; exit 1 ;;
     phone:landscape) echo "--watch phone is for a vertical or square frame; a landscape film watched on a phone is --watch feed (in a feed, not rotated) or desktop (turned sideways)"; exit 1 ;;
@@ -479,7 +479,7 @@ PY
   else
     case "$type" in
       short|promo|data|meme) if [ -n "$frameh" ]; then cmd_hf_init "$dir" "$aspect" || true; else cmd_hf_init "$dir" "$res" || true; fi ;;
-      math|paper) echo "   engine   : Manim → cd $(rel "$dir") && uv init --bare --python 3.12 && uv add manim   (see engines/README.md)" ;;
+      math|paper) echo "   engine   : ManimGX → cd $(rel "$dir") && uv init --bare --python 3.14 && uv add manimgx   (see engines/README.md)" ;;
       edit) echo "   engine   : HyperFrames → bin/vh hf-init $(rel "$dir") portrait   (or landscape; see video-types/09-editing-talking-head.md)" ;;
     esac
   fi

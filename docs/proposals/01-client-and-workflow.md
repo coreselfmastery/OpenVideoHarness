@@ -242,7 +242,7 @@ OpenFilm 的手册不写风格和方法。它没有这些东西：
 - 时间线上的剪辑操作（挪、剪、分割）；
 - 桌面版；
 - OpenFilm 渲染和 HyperFrames 渲染逐像素比对；
-- Manim 和 Blender 的片子。按格式它们只是 `video` 片段，最简单，但没试。
+- ManimGX 和 Blender 的片子。按格式它们只是 `video` 片段，最简单，但没试。
 
 **这说明什么。**
 

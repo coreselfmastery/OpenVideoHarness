@@ -486,7 +486,7 @@ decision_checks() {
   vh new short ci-x --aspect 4:3 >/dev/null 2>&1; rc=$?; [ $rc = 1 ] && ok "new --aspect rejects 4:3" || bad "new --aspect 4:3 exited $rc"
   a=$(vh new short ci-x --aspect 4:5 --res 4k 2>&1); rc=$?; [ $rc = 1 ] && case "$a" in *"no 4K preset for 4:5"*) true ;; *) false ;; esac \
     && ok "new refuses 4K for a 4:5 frame (HyperFrames has no preset)" || bad "new --aspect 4:5 --res 4k (rc $rc): $a"
-  a=$(vh new math ci-x --aspect 9:16 2>&1); rc=$?; case "$rc:$a" in 1:*"manim.cfg"*) ok "new --aspect on a Manim type points to manim.cfg" ;; *) bad "new math --aspect (rc $rc): $a" ;; esac
+  a=$(vh new math ci-x --aspect 9:16 2>&1); rc=$?; case "$rc:$a" in 1:*"ManimGX 竖屏"*) ok "new --aspect on a ManimGX type points to the vertical setup (-r 1080x1920)" ;; *) bad "new math --aspect (rc $rc): $a" ;; esac
   mkdir -p "$t/hfi"; a=$(vh hf-init "$t/hfi" landscape-4k 2>&1); rc=$?; b=$(vh hf-init "$t/hfi" 2:3 2>&1); rb=$?
   case "$rc:$a|$rb:$b" in 1:*"4K is a render flag"*"|1:"*"unknown frame 2:3"*) [ -z "$(ls -A "$t/hfi")" ] && ok "hf-init refuses a 4K preset and an unknown frame before scaffolding" || bad "hf-init wrote files after refusing" ;;
     *) bad "hf-init frame check ($rc/$rb): $a | $b" ;; esac
@@ -499,7 +499,7 @@ decision_checks() {
   a=$(vh new short ci-x --watch tv 2>&1); rc=$?; [ $rc = 1 ] && case "$a" in *"unknown --watch"*) true ;; *) false ;; esac && ok "new --watch rejects an unknown target" || bad "new --watch tv exited $rc: $a"
   a=$(vh new short ci-x --watch feed 2>&1); rc=$?; [ $rc = 1 ] && case "$a" in *"already --watch phone"*) true ;; *) false ;; esac && ok "new refuses a feed target for a vertical frame" || bad "new short --watch feed exited $rc: $a"
   a=$(vh new promo ci-x --watch phone 2>&1); rc=$?; [ $rc = 1 ] && case "$a" in *"--watch feed"*) true ;; *) false ;; esac && ok "new refuses a phone target for a landscape frame" || bad "new promo --watch phone exited $rc: $a"
-  vh new math ci-x --watch phone >/dev/null 2>&1; rc=$?; [ $rc = 1 ] && ok "new refuses a phone target for a Manim (landscape) type" || bad "new math --watch phone exited $rc"
+  vh new math ci-x --watch phone >/dev/null 2>&1; rc=$?; [ $rc = 1 ] && ok "new refuses a phone target for a ManimGX (landscape) type" || bad "new math --watch phone exited $rc"
   for bad_style in "dark-math,_swatch" "Dark-Math" "../styles/ink-wash" ","; do
     vh new math ci-x --style "$bad_style" >/dev/null 2>&1; rc=$?; [ $rc = 1 ] || bad "new --style '$bad_style' exited $rc"; done
   ok "new --style rejects a bad name anywhere in the list, paths and an empty list"

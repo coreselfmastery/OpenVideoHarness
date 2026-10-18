@@ -11,7 +11,7 @@
 
 ## 按引擎找现成的
 
-| 需要什么 | HyperFrames（HTML + GSAP） | p5 / ClaudeAnimationBase | Manim | 通用 |
+| 需要什么 | HyperFrames（HTML + GSAP） | p5 / ClaudeAnimationBase | ManimGX | 通用 |
 |---|---|---|---|---|
 | 转场 | `npx hyperframes add <block>` 注册表里有着色器转场（例如 `flash-through-white`）；速度匹配的切法见 `references/repos/hyperframes/_upstream_claude/skills/cut-the-curve/` | `brushWipe`、`iris`、`irisShape`（见 ANIMATION_GUIDE） | `Transform`、`FadeTransform`、摄像机移动 | 跟着动作切、形状匹配切 |
 | 背景和氛围 | Three.js 或 canvas 层；`hyperframes-creative/references/audio-reactive.md` | 水彩 fill、纸纹、`glow()` | `NumberPlane`、渐变背景 | 颗粒、暗角（成片后处理，见下） |

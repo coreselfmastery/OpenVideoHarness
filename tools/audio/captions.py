@@ -7,7 +7,7 @@ usage (via bin/vh captions): python tools/audio/captions.py <project_dir> [--lan
 Reads audio/timeline.<lang>.json (or audio/timeline.json) written by bin/vh tts. Writes into <project>/audio/:
   captions.zh.srt, captions.en.srt (when that side exists), captions.bi.srt (zh line + en line) and
   captions.json: [{"id","start","end","zh":[lines],"en":[lines]}] — engines burn captions in from this file
-  (HyperFrames / p5 / Manim read it; every caption stays a pure function of t).
+  (HyperFrames / p5 / ManimGX read it; every caption stays a pure function of t).
 Soft subtitle tracks for players/platforms: bin/vh mux <video> <audio> <out> audio/captions.zh.srt audio/captions.en.srt
 Vertical video: pass --zh-max 11 (72 px in the 810 px safe box).
 Word timing (timeline from bin/vh tts … --align gemini, elevenlabs or minimax): each captions.json item also gets

@@ -8,9 +8,9 @@
 - Output: {W}x{H}, {fps} fps, exactly {N}s ({frames} frames)  <!-- 合成尺寸（代码按它写，4K 也照写 1080p 的尺寸）、帧率、时长；时长没定时写范围 {60–90}s。bin/vh check 拿成片对这一行和 Resolution 一行，对不上就失败（playbook/01 "规格"） -->
 - Watch on: {watch}  <!-- 主要在哪看，定字号下限和可读性检查缩到多宽（playbook/03 §4）：phone 手机竖屏；feed 横屏片放在手机信息流里，竖着拿、不转屏；desktop 电脑，或手机转成横屏全屏。bin/vh new 按画幅填了默认值，人说了发在哪就照着改 -->
 - Pace: normal  <!-- relaxed | normal | brisk：画面文字读得多从容，定 bin/vh readcheck 的目标（playbook/03 §2）。relaxed 讲解、论文、书信体，观众边读边想；normal 大多数片子；brisk 快剪、梗、卡点 MV。bin/vh new 给 math、paper 写 relaxed，meme 写 brisk，其余 normal。底线（够快读一遍）不随它变；某一段要换挡，在合成里标 data-pace -->
-- Resolution: {res}  <!-- 交付哪几种，可以写多个：1080p、4k、1080p, 4k；4k 就是合成尺寸的 2 倍。默认 1080p。4k：照常按 1080p 写合成和字号，出片时渲成 4K（HyperFrames `render --resolution 4k`，竖屏 `portrait-4k`，方形 `square-4k`，4:5 没有 4K 预设；Manim `-qk --fps 30`；Remotion `--scale=2`）；canvas、Three.js 要按像素密度开大，否则会糊（engines/README.md"出 4K"）；手绘引擎暂不支持 4K；draft 用 1080p，出 4K 前先渲 4K draft 跑 bin/vh check --against <1080p 成片>，再裁帧看锐度 -->
+- Resolution: {res}  <!-- 交付哪几种，可以写多个：1080p、4k、1080p, 4k；4k 就是合成尺寸的 2 倍。默认 1080p。4k：照常按 1080p 写合成和字号，出片时渲成 4K（HyperFrames `render --resolution 4k`，竖屏 `portrait-4k`，方形 `square-4k`，4:5 没有 4K 预设；ManimGX `-r 3840x2160 --fps 30`；Remotion `--scale=2`）；canvas、Three.js 要按像素密度开大，否则会糊（engines/README.md"出 4K"）；手绘引擎暂不支持 4K；draft 用 1080p，出 4K 前先渲 4K draft 跑 bin/vh check --against <1080p 成片>，再裁帧看锐度 -->
 - Review language: zh  <!-- zh | en：审阅页和审阅台的界面语言，按用户第一句话的语言定（bin/vh new --lang）；字幕和项目文档照旧用项目自己的语言 -->
-- Engine: {HyperFrames | Remotion | Manim CE | ClaudeAnimationBase (p5.brush) | other}
+- Engine: {HyperFrames | Remotion | ManimGX | ClaudeAnimationBase (p5.brush) | other}
 - Platform / audience: {where it plays, who watches, sound-on or muted}
 - Language: {zh-CN | en}, narration: {TTS voice | user recording | song | none}
 - Deliverables: {final.mp4 (+ 9:16 / 3:4 cuts?), cover image?, SRT?}

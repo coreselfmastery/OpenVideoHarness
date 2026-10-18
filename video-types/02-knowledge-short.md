@@ -17,7 +17,7 @@
   - **短片或静音片**：读 `references/repos/hyperframes/skills/faceless-explainer/references/` 里的设计资料，手写一个 `index.html` 最快（最小写法见 `engines/README.md` 的"最小写法"）。showcase 02 就是这么做的。
   - **长片、有旁白、多场景**：可以走 HyperFrames 官方的 `/faceless-explainer` 工作流（每一帧派一个 subagent，带音频同步脚本）。它需要装插件或全局 skills（要用户同意），部分功能依赖 HeyGen 账号。
 - **备选**：Remotion + `template-tiktok`（用 whisper.cpp 做字幕）。
-- 穿插公式或几何片段时，用 Manim 单独渲染成片段，再嵌进来。
+- 穿插公式或几何片段时，用 ManimGX 单独渲染成片段，再嵌进来。
 
 ## 工作流
 
