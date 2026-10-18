@@ -22,7 +22,7 @@
   },
   {
    "n": 6,
-   "text": "字号低于下限（1080 宽主标题 84px / 辅助 44px；竖屏字幕 65px）？按最终成片里的实际大小量：镜头推近后以推近后为准；Manim 等不以 px 定义字号的引擎，从 1080p 成片的 crop 上量像素。GIF 预览不在考核范围内。"
+   "text": "字号低于下限（1080 宽主标题 84px / 辅助 44px；竖屏字幕 65px）？按最终成片里的实际大小量：镜头推近后以推近后为准；ManimGX 等不以 px 定义字号的引擎，从 1080p 成片的 crop 上量像素。GIF 预览不在考核范围内。"
   },
   {
    "n": 7,
@@ -90,7 +90,7 @@
   {
    "key": "math",
    "doc": "video-types/01-math-science-explainer.md",
-   "zh": "数学/科学原理讲解（Manim）"
+   "zh": "数学/科学原理讲解（ManimGX）"
   },
   {
    "key": "short",
@@ -115,7 +115,7 @@
   {
    "key": "paper",
    "doc": "video-types/06-paper-explainer.md",
-   "zh": "论文讲解/会议视频（Manim + HyperFrames）"
+   "zh": "论文讲解/会议视频（ManimGX + HyperFrames）"
   },
   {
    "key": "handdrawn",

@@ -91,3 +91,10 @@
 | audio/score.json → the music | composed here; rendered by `bin/vh music` (synthesis only, no samples) | original |
 | 10 sonification sounds (target square, sums, harmonics, sweep, bell) | `tools/foley.py`, synthesized | original |
 | built-in SFX (air) | `bin/vh sfx lib` (`tools/audio/sfx.py`) | MIT, part of this repo |
+
+## 2026-10-18 · Engine migration (Manim CE → ManimGX)
+
+- The repo's math engine is now **ManimGX 0.1.1** (Rust/wgpu GPU core; CE's Python API; built-in Typst math; no LaTeX/ffmpeg/cairo/pango). This showcase was re-validated end-to-end on it: draft + final renders, `manimgx inspect` (no layout problems in 41 samples), bbox audits unchanged, pixel-checked frames at t = 1…23 s (grey target, blue harmonics, yellow sums, red Gibbs elements, zoom panel all correct). Code changes: see LESSONS.md › 2026-10-18 (three edits: star import + numpy, `Path` alias, `rate_functions.*` → package-level).
+- Render wall times (2-core CPU, lavapipe): draft 480p15 10.9 s; final 1080p30 40.3 s. Expect faster on GPU (Vulkan; e.g. Kaggle T4).
+- Colour: ManimGX output is limited-range **tagged** (matrix smpte170m, transfer sRGB, primaries bt709) — no more untagged-BT.601 pixels (the 2026-10-01 entry below stays as the CE-era record). Delivery re-encode to BT.709 still happens in the soundtrack mix, as before.
+- The 2026-09-28 CE-era entries above are kept as the historical record of how the film was originally built; they still describe CE behaviour correctly.

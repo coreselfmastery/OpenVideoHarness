@@ -7,11 +7,11 @@
 
 ## 引擎
 
-- **首选**：Manim CE（要配旁白时再加 manim-voiceover）。公式、几何和坐标系都很精确，LLM 语料多；manim-voiceover 还能在某个词出现时触发动画。
+- **首选**：ManimGX（同一套 CE 的 Python API，Rust/wgpu GPU 核；公式用内置 Typst 排版，不装 LaTeX；`self.say` / `add_sound` 内置，能在某个词出现时触发动画）。公式、几何和坐标系都很精确，LLM 语料多。
 - **备选**：
   - HyperFrames + KaTeX，适合公式少、排版多的讲解；
   - Remotion + KaTeX，社区案例 @dotey 的 Transformer 讲解就是用它做的。
-- 安装方法见 `engines/README.md`。本机已有 MacTeX，所以 `MathTex` 可以直接用。
+- 安装方法见 `engines/README.md`。公式排版用 ManimGX 内置的 Typst（New Computer Modern），不需要装 MacTeX/LaTeX。
 
 ## 工作流
 
@@ -25,12 +25,12 @@
 4. **写 STYLE.md**：
    - **实体-颜色映射表**：每个数学对象一个颜色，全片不变；
    - 在动画区定义 6×6 锚点网格（Code2Video 的做法），只通过网格放置元素。有讲义栏时，动画区是讲义栏旁边的那块；没有讲义栏时，就是整个安全框。坐标轴内部的点仍然用 `axes.c2p()` 定位，网格只管对象的整体摆放。
-5. **音频先行（有旁白时）**：用 TTS 生成旁白，manim-voiceover 用 `with self.voiceover(text=...) as tracker:` 和 `run_time=tracker.duration` 把动画对齐到语音，bookmark 可以在某个词上触发动画。**静音版**跳过这一步，时长由 STORYBOARD 的 reads 决定，画面和少量标签必须在静音下读得懂。
+5. **音频先行（有旁白时）**：用 TTS 生成旁白；ManimGX 里 `self.say("…[这个词]…", anim1, anim2)` 把动画对到方括号里的词上（本仓库自己的音频管线 `tools/build_audio.sh` + timeline 照旧）。**静音版**跳过这一步，时长由 STORYBOARD 的 reads 决定，画面和少量标签必须在静音下读得懂。
 6. **逐个场景搭建**：
-   - 先用 `manim -ql` 快速渲染；报错按 ScopeRefine 的顺序修（`playbook/06-research-mechanisms.md`）；
-   - 渲染后先打印所有对象的包围盒，检查有没有重叠，再看联系表（网格和包围盒审计的现成实现：`showcase/03-math-fourier/scenes/style.py`）；
-   - 最终用 `-qh --fps 30` 出片（`-qh` 默认 60fps，`-qk` 是 4K60）。
-7. **写代码前先读**：`3brown1blue/src/three_b1b/skill/SKILL.md` 开头的 Gotchas，里面是 Manim CE 最常见的崩溃原因，比如 `MathTex` 里不要写 `$`、`Transform` 之后要换成 `ReplacementTransform`。
+   - 先用 `manimgx render -r 854x480 --fps 15` 快速渲染，`manimgx inspect` 过布局检查（exit 1 = 有问题）；报错按 ScopeRefine 的顺序修（`playbook/06-research-mechanisms.md`）；
+   - 渲染后先打印所有对象的包围盒，检查有没有重叠，再看联系表（网格和包围盒审计的现成实现：`showcase/03-math-fourier/scenes/style.py`；`manimgx inspect` 的 storyboard 也会标出重叠）；
+   - 最终用 `-r 1920x1080 --fps 30` 出片（4K `-r 3840x2160`；输出在场景文件旁边，`-o` 可改路径）。
+7. **写代码前先读**：`3brown1blue/src/three_b1b/skill/SKILL.md` 开头的 Gotchas，里面是 Manim CE 最常见的崩溃原因（GX 同一套 API，同样适用），比如 `MathTex` 里不要写 `$`、`Transform` 之后要换成 `ReplacementTransform`。
 
 ## 审美要点
 
@@ -60,14 +60,14 @@
 ## Prompt 增量块
 
 ```text
-+ TYPE: 3b1b-style explainer. Manim CE, 1920x1080 30fps, bg #000000, text CMU Serif + LaTeX. Audience: {high-school | undergrad | graduate | industry}.
++ TYPE: 3b1b-style explainer. ManimGX, 1920x1080 30fps (`render -r 1920x1080 --fps 30`), bg #000000, math in New Computer Modern (built-in Typst; no LaTeX install). Audience: {high-school | undergrad | graduate | industry}.
 Bind one color per math entity for the whole video; symbol and its geometry share it: {x:#58C4DD, f(x):#FFFF00, error:#FC6255}.
 Open on the concrete puzzle with the core object on screen; say why it matters within 30s. Concrete example before the general rule.
 Geometry first, then the equation. Equations appear whole, dim to 30%, then light up and get colored term by term.
 Keep the parent diagram visible (dimmed) when zooming into details; dim old layers, never delete them mid-argument.
 After a question card, hold 2–3s so the viewer can think (longer than the reading floor). Each play() 1–3s, then a 0.5–2s hold. No bounce, glow, particles, or bullet-list ending.
 Place objects only via a 6x6 anchor grid (A1–F6) in the animation area; print all bounding boxes and check overlaps before rendering.
-{Narrated: manim-voiceover, trigger visuals on bookmarks at {cue} words | Silent: timing comes from the storyboard reads; short on-screen labels carry the meaning}. Final render: -qh --fps 30.
+{Narrated: ManimGX self.say, trigger visuals on [bracketed] words at {cue} | Silent: timing comes from the storyboard reads; short on-screen labels carry the meaning}. Final render: -r 1920x1080 --fps 30.
 ```
 
 ## 自查重点
@@ -80,8 +80,8 @@ Place objects only via a 6x6 anchor grid (A1–F6) in the animation area; print 
 - 结尾是否落在"观众现在多懂了什么"的那个画面上，而不是一张总结清单？
 - 结论文字至少完整可读 2.5 秒；放大、转场的中途，有没有不透明的底色把被放大的部分盖住？（showcase 03 的评审就抓到过这一点）
 - 画面在演示一个数学性质时，数据是不是脚本算出来、并且 assert 过的？坐标和数字不能凭记忆手填。abstract-algebra-promo 的 `e8.py` 从定义生成 E8 根系，断言正好 240 个根、8 个单根，再把投影坐标写成 JSON；`qr.py` 生成 H 级纠错的二维码，把画面上要撕掉的那块分别涂白、涂黑各渲一张，用 OpenCV 解码，断言两种情况都还读得出原文。脚本和它写出的数据一起放进项目，页面直接读这份数据（它是手工嵌进 `promo.html` 的，重跑脚本不会更新画面，这一步别学）；NOTES.md 记下断言了什么。见 `cases/opus55-gallery.md` §7。
-- Manim 陷阱：传给 `self.play(..., rate_func=...)` 的 `rate_func` 会覆盖其中每个动画自己的缓动函数。想让各个动画用不同的缓动，就分开 play，或者只在动画上设置。
-- Manim 陷阱：`always_redraw` 每次重绘都会丢失 `z_index`，因为 `Mobject.become()` 只复制点和样式。结果所有动态曲线都停在图层 0，不透明面板会盖住它们。需要包一层，每次重绘后把 `z_index` 设回去，实现见 `showcase/03-math-fourier/scenes/` 里的 `live()`。showcase 03 前三版的放大转场闪黑，根源就是这个。
+- Manim 陷阱（GX 同样适用）：传给 `self.play(..., rate_func=...)` 的 `rate_func` 会覆盖其中每个动画自己的缓动函数。想让各个动画用不同的缓动，就分开 play，或者只在动画上设置（`x.animate(rate_func=…)`）。
+- Manim 陷阱（GX 同样适用）：`always_redraw` 每次重绘都会丢失 `z_index`，因为 `Mobject.become()` 只复制点和样式。结果所有动态曲线都停在图层 0，不透明面板会盖住它们。需要包一层，每次重绘后把 `z_index` 设回去，实现见 `showcase/03-math-fourier/scenes/` 里的 `live()`。showcase 03 前三版的放大转场闪黑，根源就是这个。
 
 ## 可参考的案例与源码
 

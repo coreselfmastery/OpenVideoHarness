@@ -49,7 +49,7 @@ VOCAB = {
                "carry", "enter", "chapter", "refocus",
                "sign-off", "cta"],
     "types": ["math", "short", "promo", "mv", "data", "paper", "handdrawn", "meme"],
-    "engines": ["hyperframes", "canvas", "three", "p5", "manim", "remotion"],
+    "engines": ["hyperframes", "canvas", "three", "p5", "manimgx", "remotion"],
     "aspect": ["landscape", "portrait", "square"],
     "needs": ["ui-page", "ui-element", "text", "number", "series", "photo", "footage", "logo", "3d", "none"],
     "sound": ["required", "recommended", "optional"],

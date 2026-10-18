@@ -1,19 +1,20 @@
 """Building a square wave from sine waves (Fourier partial sums + Gibbs overshoot).
 
-Silent, 1920x1080 @ 30 fps, 25.0 s.  Render:
-    uv run manim -ql scenes/fourier.py FourierSquareWave                 # draft 854x480 @ 15 fps
-    uv run manim -qh --fps 30 scenes/fourier.py FourierSquareWave        # final 1920x1080 @ 30 fps
+Silent, 1920x1080 @ 30 fps, 25.0 s.  Render (ManimGX):
+    uv run manimgx render -r 854x480 --fps 15 scenes/fourier.py FourierSquareWave    # draft
+    uv run manimgx render -r 1920x1080 --fps 30 scenes/fourier.py FourierSquareWave   # final
 
 Every drawn curve is an always_redraw of closed-form maths evaluated from ValueTrackers, so each
 frame is a pure function of the tracker values at that time (no per-frame state, no randomness).
 Timings follow STORYBOARD.md (shot letters in the comments).
 """
 import sys
-from pathlib import Path
+from pathlib import Path as FsPath   # aliased: `from manimgx import *` exports a Path mobject class
 
-sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(FsPath(__file__).resolve().parent))
 
-from manim import *  # noqa: E402,F403
+import numpy as np  # noqa: E402  (manimgx does not re-export numpy the way manim did)
+from manimgx import *  # noqa: E402,F403
 from style import (  # noqa: E402
     GRID, TARGET, HARM, SUM, OVER, INK, BG, AXIS_OPACITY, DIM, CONTEXT,
     harmonic, partial_sum, highest_n, square_polyline, lerp, to_screen,
@@ -57,7 +58,7 @@ def live(func):
 
 class FourierSquareWave(Scene):
     def construct(self):
-        Path("out/check/bbox_audit.txt").unlink(missing_ok=True)
+        FsPath("out/check/bbox_audit.txt").unlink(missing_ok=True)
         # ── trackers ───────────────────────────────────────────────────────────
         ax_o = ValueTracker(0)   # axis opacity factor
         rt = ValueTracker(0)     # target reveal 0..1
@@ -189,12 +190,12 @@ class FourierSquareWave(Scene):
         # ── A · 0.0–2.1  the target square wave ───────────────────────────────
         self.wait(0.2)
         self.play(ax_o.animate.set_value(1), rt.animate.set_value(1), run_time=1.2,
-                  rate_func=rate_functions.ease_in_out_sine)
+                  rate_func=ease_in_out_sine)
         self.wait(0.7)
 
         # ── B · 2.1–4.3  one sine already follows it; it becomes the running sum ──
         bn.set_value(1); bw.set_value(0); bl.set_value(0); br.set_value(0); bo.set_value(1)
-        self.play(br.animate.set_value(1), run_time=1.2, rate_func=rate_functions.ease_in_out_sine)
+        self.play(br.animate.set_value(1), run_time=1.2, rate_func=ease_in_out_sine)
         self.wait(0.6)
         self.play(bc.animate.set_value(1), run_time=0.4)
         w.set_value(1); yo.set_value(1); bo.set_value(0); bc.set_value(0)   # identical curve, swap owners
@@ -220,7 +221,7 @@ class FourierSquareWave(Scene):
             # per-animation rate funcs (a play-level rate_func would override them all)
             self.play(plus.animate(rate_func=late(0, 0.4)).set_opacity(1),
                       term.animate(rate_func=late(0, 0.4)).set_opacity(1).set_color(HARM),
-                      br.animate(rate_func=rate_functions.ease_in_out_sine).set_value(1), run_time=t_draw)
+                      br.animate(rate_func=ease_in_out_sine).set_value(1), run_time=t_draw)
             self.wait(h1)
             self.play(bl.animate.set_value(1), run_time=t_lift, rate_func=smooth)
             hz.set_value(1.5)   # merge: opaque yellow slides over the blue, blue fades underneath (no blended colour)

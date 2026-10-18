@@ -36,3 +36,9 @@ styles/gallery.mp4
 *.part
 # docs/site: the author's own films for the homepage stay local
 docs/site/media/
+
+# ManimGX writes its video and storyboards beside the scene file (engines/README.md › ManimGX);
+# the finished films live in the "media" release (tools/fetch_media.sh), as above
+showcase/*/scenes/*.mp4
+showcase/*/scenes/*.storyboard*.png
+showcase/*/scenes/*.storyboard.png

@@ -4,7 +4,7 @@
 
 合约的核心字段和 [OpenFilm](https://github.com/openfilm/openfilm) 协议 0.1 的页面同名同义（它的 `packages/openfilm/SPEC.md` 第 2–4 节），所以按这一页写的片子，也能在 OpenFilm 的 Studio 里打开（试验，见 `docs/proposals/01-client-and-workflow.md`）。下面"扩展"一节的字段是本仓库加的，别的宿主会忽略它们。
 
-Manim、Blender 和生成式视频直接出视频文件，不是页面，不在这一页管的范围里；放进时间线时，它们就是视频片段。
+ManimGX、Blender 和生成式视频直接出视频文件，不是页面，不在这一页管的范围里；放进时间线时，它们就是视频片段。
 
 ## 页面给出什么
 

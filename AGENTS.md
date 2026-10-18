@@ -55,12 +55,12 @@ effort 管 agent 自己查得多细，导演模式管人拍板哪些事，两个
 
 | 用户想要 | 读 | 首选引擎 |
 |---|---|---|
-| 数学、物理、算法的原理讲解，3b1b 风格 | `video-types/01-math-science-explainer.md` | Manim CE |
+| 数学、物理、算法的原理讲解，3b1b 风格 | `video-types/01-math-science-explainer.md` | ManimGX |
 | 知识科普短视频，竖屏或横屏（抖音、B站、小红书、视频号、Shorts） | `video-types/02-knowledge-short.md` | HyperFrames |
 | 产品宣传、发布片、App 或 SaaS 介绍、功能演示 | `video-types/03-product-promo.md` | HyperFrames |
 | 歌词视频、MV、配合音乐的动画 | `video-types/04-lyric-music-video.md` | ClaudeAnimationBase（手绘）或 HyperFrames（排版） |
 | 数据故事、动画图表、数字可视化 | `video-types/05-data-story.md` | HyperFrames + SVG |
-| 论文讲解、会议视频、学术报告 | `video-types/06-paper-explainer.md` | Manim（机制）或 HyperFrames（结构、结果） |
+| 论文讲解、会议视频、学术报告 | `video-types/06-paper-explainer.md` | ManimGX（机制）或 HyperFrames（结构、结果） |
 | 手绘、水彩、白板、剪纸、角色小短片 | `video-types/07-hand-drawn.md` | ClaudeAnimationBase（p5.brush） |
 | 网络梗、野兽派、科技推特风的快剪 | `video-types/08-brutalist-meme.md` | HyperFrames |
 | 剪用户自己录的素材：口播、访谈、Vlog，删口水词和重录、剪接缝、加字幕和图解、出竖屏版（实验性） | `video-types/09-editing-talking-head.md`，细节在 `engines/editing.md` | HyperFrames |

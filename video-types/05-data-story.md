@@ -67,7 +67,7 @@ Every on-screen number traced to its source row/calculation in NOTES.md.
 ## 可参考的案例与源码
 
 - `references/repos/hyperframes/skills/hyperframes-creative/references/data-in-motion.md`（**必读**）。
-- `references/repos/3brown1blue/src/three_b1b/skill/rules/graphs-plots.md`：用 Manim 画图表的做法。
+- `references/repos/3brown1blue/src/three_b1b/skill/rules/graphs-plots.md`：用 Manim（CE；ManimGX 同一套 API）画图表的做法。
 - `playbook/03-motion-design.md`：计数和 stagger 的数值参数。
 
 ## 社区 skill 参考

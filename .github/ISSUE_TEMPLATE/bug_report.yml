@@ -46,7 +46,7 @@ body:
       options:
         - "bin/vh / install"
         - "HyperFrames"
-        - "Manim"
+        - "ManimGX"
         - "ClaudeAnimationBase (hand-drawn)"
         - "Styles / swatches · 风格库"
         - "TTS / captions · 配音与字幕"

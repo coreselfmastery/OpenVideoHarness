@@ -10,7 +10,7 @@
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-black)
 ![Agents](https://img.shields.io/badge/agents-Claude%20Code%20%7C%20Codex-orange)
-![Engines](https://img.shields.io/badge/engines-HyperFrames%20%7C%20Manim%20%7C%20Remotion%20%7C%20p5.brush%20%7C%20Blender-blue)
+![Engines](https://img.shields.io/badge/engines-HyperFrames%20%7C%20ManimGX%20%7C%20Remotion%20%7C%20p5.brush%20%7C%20Blender-blue)
 
 
 https://github.com/user-attachments/assets/48923404-eff1-41cd-b303-82c9ede51c1f
@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/48923404-eff1-41cd-b303-82c9ede51c1f
 
 ## 这是什么
 
-现在让 AI"一句话做一支视频"已经不稀奇：它写一段程序，程序算出每一帧的样子，浏览器或 Manim 把帧渲染出来，再配上声音。难的是每次都做好。同一个模型，这次惊艳，下次就节奏乱、满屏发光、数字乱编，因为它手里没有一套做视频的流程和检查办法。
+现在让 AI"一句话做一支视频"已经不稀奇：它写一段程序，程序算出每一帧的样子，浏览器或 ManimGX 把帧渲染出来，再配上声音。难的是每次都做好。同一个模型，这次惊艳，下次就节奏乱、满屏发光、数字乱编，因为它手里没有一套做视频的流程和检查办法。
 
 这个仓库就是这套流程和检查办法，写成 agent 能照着执行的文档和命令行工具 `bin/vh`：
 
@@ -34,7 +34,7 @@ https://github.com/user-attachments/assets/48923404-eff1-41cd-b303-82c9ede51c1f
 - **声音一起做**：中英配音、双语字幕、用代码写的配乐和音效、混音和质检。
 - **风格库和 Blender**：31 种从名作里提炼的风格，各带一段实际渲染的样片，可以借来用，不必照搬；要真玻璃、体积光、上百万粒子时，agent 写 Python 驱动 Blender。
 
-它不是新的渲染引擎，而是架在 HyperFrames、Manim、Remotion、p5.brush、Blender 之上的"怎么做"。
+它不是新的渲染引擎，而是架在 HyperFrames、ManimGX、Remotion、p5.brush、Blender 之上的"怎么做"。
 
 ## 能做出什么
 
@@ -57,7 +57,7 @@ https://github.com/user-attachments/assets/c2368f76-b157-4a48-9945-8048a515efd4
 
 <sub><a href="https://github.com/ZLHad/OpenVideoHarness/releases/download/media/03-math-explainer.mp4">下载原片</a></sub>
 </td>
-<td valign="top"><b><a href="showcase/03-math-fourier/">03 · 3Blue1Brown 式数学讲解</a></b>（Manim · 25 秒 · 1920×1080）<br>正弦波一层层叠成方波，最后停在吉布斯过冲上。英文旁白，每个谐波有自己的音。<br><b><a href="showcase/03-math-fourier/README.md#the-request-this-was-built-from">需求</a>：</b>"Building a square wave from sine waves"（用正弦波拼出方波）</td>
+<td valign="top"><b><a href="showcase/03-math-fourier/">03 · 3Blue1Brown 式数学讲解</a></b>（ManimGX · 25 秒 · 1920×1080）<br>正弦波一层层叠成方波，最后停在吉布斯过冲上。英文旁白，每个谐波有自己的音。<br><b><a href="showcase/03-math-fourier/README.md#the-request-this-was-built-from">需求</a>：</b>"Building a square wave from sine waves"（用正弦波拼出方波）</td>
 </tr>
 <tr>
 <td width="40%" valign="top">
@@ -160,12 +160,12 @@ cd ~/OpenVideoHarness && claude
 
 | 类型 | 适合做什么 | 首选引擎 | 文档 |
 |---|---|---|---|
-| 01 数学、科学讲解 | 3Blue1Brown 式的原理动画 | Manim | [01](video-types/01-math-science-explainer.md) |
+| 01 数学、科学讲解 | 3Blue1Brown 式的原理动画 | ManimGX | [01](video-types/01-math-science-explainer.md) |
 | 02 知识科普短视频 | 抖音、B 站、小红书、视频号、Shorts | HyperFrames | [02](video-types/02-knowledge-short.md) |
 | 03 产品片、发布片 | App、SaaS、开源项目的介绍和功能演示 | HyperFrames | [03](video-types/03-product-promo.md) |
 | 04 歌词视频、MV | 跟着音乐走的动画 | p5.brush 或 HyperFrames | [04](video-types/04-lyric-music-video.md) |
 | 05 数据故事 | 动态图表、数字可视化 | HyperFrames + SVG | [05](video-types/05-data-story.md) |
-| 06 论文讲解 | 会议视频、学术报告 | Manim + HyperFrames | [06](video-types/06-paper-explainer.md) |
+| 06 论文讲解 | 会议视频、学术报告 | ManimGX + HyperFrames | [06](video-types/06-paper-explainer.md) |
 | 07 手绘短片 | 水彩、白板、剪纸、角色小短片，能按笔顺写汉字 | p5.brush（自带） | [07](video-types/07-hand-drawn.md) |
 | 08 梗图快剪 | 野兽派、科技推特风 | HyperFrames | [08](video-types/08-brutalist-meme.md) |
 | 09 剪你自己的素材（试验中） | 口播、访谈：删口水词、加字幕和图解、出竖屏版 | HyperFrames | [09](video-types/09-editing-talking-head.md) |
@@ -220,9 +220,9 @@ AI 听不见，所以声音尽量做成能计算、能测量的：
 | macOS 或 Linux、git | 基础（Windows 没有测过） |
 | Node.js ≥ 22、Google Chrome | 在浏览器里渲染画面 |
 | FFmpeg | 编码、混音、检查 |
-| Python 3 + [uv](https://github.com/astral-sh/uv) | 声音工具、联系表、Manim；依赖第一次用时装进 uv 的缓存 |
+| Python 3 + [uv](https://github.com/astral-sh/uv) | 声音工具、联系表、ManimGX（要 Python 3.13/3.14，uv 会自己下载）；依赖第一次用时装进 uv 的缓存 |
 | Apple Silicon | 本地 Qwen3-TTS 配音（换云端配音就不需要） |
-| LaTeX | Manim 里的公式 |
+| — | 不再需要 LaTeX：ManimGX 用内置 Typst 排公式（New Computer Modern） |
 | Blender 5.2 | 只有 3D 镜头需要；沙箱渲染脚本目前只在 macOS 上跑 |
 
 - **成本**：渲染、配乐、音效都在本地跑，不花钱。要花的是 agent 本身（Claude Code 或 Codex 的订阅或 API 用量）；接云端配音或生成式视频时，按各家收费，key 一律从环境变量读。
@@ -273,7 +273,7 @@ bash install.sh --no-skill                       # 不注册全局 skill
 
 ## 致谢
 
-感谢 HyperFrames、Remotion、Manim、p5.brush、Three.js、Blender、Qwen3-TTS、mlx-audio、FFmpeg；Code2Video、Paper2Video、TheoremExplainAgent 等研究；ClaudeAnimationBase、PDoomVideo、functional-emotions-video、Battle-of-Austerlitz-Film、归藏 product-video skill、lemo-opuscar、OpenMontage、awesome-opus5-5-videos 等开源项目；以及在时间线上公开分享实验和提示词的创作者，包括 Movez 和 Eian。完整名单、许可证和用途见 [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md)。
+感谢 HyperFrames、Remotion、ManimGX（以及它实现的 Manim CE API）、p5.brush、Three.js、Blender、Qwen3-TTS、mlx-audio、FFmpeg；Code2Video、Paper2Video、TheoremExplainAgent 等研究；ClaudeAnimationBase、PDoomVideo、functional-emotions-video、Battle-of-Austerlitz-Film、归藏 product-video skill、lemo-opuscar、OpenMontage、awesome-opus5-5-videos 等开源项目；以及在时间线上公开分享实验和提示词的创作者，包括 Movez 和 Eian。完整名单、许可证和用途见 [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md)。
 
 本项目是独立项目，与 Anthropic、HeyGen、Remotion、Show Lab、阿里云均无隶属关系。
 

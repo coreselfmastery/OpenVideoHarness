@@ -2,7 +2,7 @@
 
 ## video-as-code 是什么
 
-模型不直接生成像素，而是写一个程序：给定时间 t，就画出那一帧。渲染器（headless Chrome、Manim、Blender）以 1/fps 为步长逐帧调用这个程序，最后由 ffmpeg 把帧和音轨合成 mp4。
+模型不直接生成像素，而是写一个程序：给定时间 t，就画出那一帧。渲染器（headless Chrome、ManimGX、Blender）以 1/fps 为步长逐帧调用这个程序，最后由 ffmpeg 把帧和音轨合成 mp4。
 
 这种做法带来三个性质，后面的工作流都依赖它们：
 
@@ -18,14 +18,14 @@
 |---|---|---|---|---|
 | **HyperFrames**（HeyGen，Apache-2.0） | 纯 HTML/CSS + GSAP，可混用 Lottie、Three.js | Claude 最擅长写 HTML；有官方 Claude Code 插件和 21 个 skills；自带 lint、check、snapshot 自检；没有公司规模限制 | 2026 年 3 月才开源，还在快速迭代 | 宣传片、科普竖屏、字幕包装、排版类 MV、数据动画、梗视频 |
 | **Remotion** | React 组件 | 生态最大；有官方 skills；有 Studio 预览；支持 Lambda 云渲染 | 超过 3 人的公司需要买授权；动画必须用 `useCurrentFrame()` 驱动 | 同上；偏好 React 或需要云端批量渲染时选它 |
-| **Manim CE** | Python 场景类 | 公式、几何、坐标系精确；LLM 语料多；`manim-voiceover` 能按词触发动画 | 不适合排版密集或 UI 类画面；CE 和 GL 两个版本 API 不兼容，模型容易混用 | 数学、物理、算法、论文机制讲解 |
+| **ManimGX** | Python 场景类（CE 的 API，Rust/wgpu GPU 核） | 公式、几何、坐标系精确；LLM 语料多（就是 CE 的 API）；`self.say` 能按词触发动画；内置 Typst 排公式，不装 LaTeX | 不适合排版密集或 UI 类画面；无 GPU 时落到 CPU（lavapipe），仍比 CE 快 | 数学、物理、算法、论文机制讲解 |
 | **p5.js + p5.brush**（ClaudeAnimationBase） | JS，每帧 `renderAt(t)` | 手绘、水彩、墨线质感；有现成角色和完整动画规范；仓库自带 | 纯 2D；没有 GPU 时水彩渲染慢（Apple Silicon 实测约 0.13 秒/帧） | 角色短片、手绘 MV、叙事型科普 |
 | **自定义 WebGL/Canvas** | JS | 可做任意画风，例如 functional-emotions 的 6 万笔触渲染器 | 要从头搭 | 有明确风格追求的 MV |
 | **Blender**（MCP 或 `blender -b` 脚本） | Python bpy | 真 3D、光照、物理 | 渲染慢；MCP 会直接执行 LLM 生成的代码 | 3D 产品展示、空间场景 |
 | **生成式视频 + 代码叠加** | 调 API，再写叠加层 | 写实人物和物理效果 | 花钱多；跨镜头角色一致性差；结果不确定 | 见 `05-hybrid-genvideo.md` |
 
 【综合】默认选法：
-- 要精确的数学图形，用 Manim；
+- 要精确的数学图形，用 ManimGX；
 - 要手绘质感，用 ClaudeAnimationBase；
 - 其余先用 HyperFrames；
 - 需要真 3D，用 Blender；
