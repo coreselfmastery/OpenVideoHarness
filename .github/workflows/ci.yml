@@ -20,9 +20,12 @@ jobs:
   checks:
     name: checks (${{ matrix.os }})
     runs-on: ${{ matrix.os }}
-    # the kaggle group's end-to-end split renders a real 32 s film through Chrome: about a minute on
-    # Linux, 6–8 min on the macOS runners (ARM Chrome draws it slower), on top of the rest of the suite
-    timeout-minutes: 25
+    # the kaggle group's end-to-end suite renders for real: a 32 s split film (a minute on Linux,
+    # 6–8 min on the macOS runners, whose ARM Chrome draws slower), the css-cost twin films and the
+    # bake, and render.sh through the real engine — whose first run also downloads the engine and
+    # its chrome-headless-shell. The budgets inside tools/kaggle/test.sh bound a wedged host; this
+    # ceiling only has to sit above a healthy (even slow) one, and 25 min no longer did
+    timeout-minutes: 40
     strategy:
       fail-fast: false
       matrix:
