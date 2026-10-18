@@ -353,13 +353,19 @@ a = json.load(open(sys.argv[1])); b = json.load(open(sys.argv[2]))
 out, k, n = sys.argv[3], int(sys.argv[4]), int(sys.argv[5])
 side = dict(a)
 # a half's sidecar says where its page is relative to the .split folder it sat in; the joined film's
-# sidecar sits beside the film, so the page is said from there (bin/vh patch resolves it that way)
+# sidecar sits beside the film, so the page is said from there (bin/vh patch resolves it that way).
+# Both ends in one namespace — the plain spelled paths, no realpath: on macOS $TMPDIR is spelled
+# /var/folders/… while its realpath is /private/var/folders/… (one component longer), and a relative
+# path computed across the two does not survive a physical ".." walk through the symlink.
 page = side.get("page", "")
 if page and not os.path.isabs(page):
     where = os.path.dirname(os.path.abspath(out))
-    abs_page = os.path.realpath(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), page))
-    try: side["page"] = os.path.relpath(abs_page, where)
-    except ValueError: side["page"] = abs_page   # a different drive (Windows): the absolute path
+    spelled = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(sys.argv[1])), page))
+    project = os.path.dirname(spelled)                       # the page's folder, as spelled
+    if (where + os.sep).startswith(project + os.sep):        # the film inside the project: say it from the film
+        side["page"] = os.path.relpath(spelled, where)
+    else:                                                    # outside: the spelled absolute path, like render.mjs
+        side["page"] = spelled
 side.update({
   "note": "how this video was made (tools/kaggle/render-split.sh: two halves joined without re-encoding); a patch or re-render should match these",
   "frames": n, "span": a["span"][:1] + b["span"][1:], "first_frame": 0,

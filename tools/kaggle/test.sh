@@ -371,7 +371,7 @@ ok = (d["frames"] == 960 and d["first_frame"] == 0 and d["span"] == [0.0, 32.0]
       and d["encoder"]["codec"] == "libx264" and d["encoder"]["crf"] == 28
       and os.path.exists(page) and same)
 if not ok:   # the diagnostics the bad() line above cannot reach (printed to stdout, shown by CI)
-    print("SIDECAR-DIAG: frames=%r first_frame=%r span=%r seam=%r halves=%r enc=%r page=%r exists=%r same=%r argv2=%r"
+    print("SIDECAR-DIAG: frames=%r first_frame=%r span=%r split=%r encoder=%r page=%r exists=%r same=%r argv2=%r"
           % (d.get("frames"), d.get("first_frame"), d.get("span"), side, d.get("encoder"),
              d.get("page"), os.path.exists(page), same, sys.argv[2]))
 sys.exit(0 if ok else 1)
