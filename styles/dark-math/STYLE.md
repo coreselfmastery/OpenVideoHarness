@@ -34,7 +34,7 @@
   | 灰 | `#888888` | 目标、旧层、上下文 |
 
   透明度分三层：主角 1.0、上下文 0.30–0.35、结构（坐标轴、网格）0.15–0.30。一个颜色一旦代表某个实体，全片不再换义。
-- **字体**：Manim 走 LaTeX，公式用 Computer Modern（CMU Serif）；网页引擎里没有 CMU 系统字体，用 STIX Two Text（本机自带，最接近）或 Times New Roman。变量用斜体，运算符和数字用正体。中文用 Songti SC，和衬线数学字体同一气质。等宽标签用 Menlo。
+- **字体**：ManimGX 公式走内置 Typst（New Computer Modern，和 CE 时代的 CMU Serif 同源）；网页引擎里没有 CMU 系统字体，用 STIX Two Text（本机自带，最接近）或 Times New Roman。变量用斜体，运算符和数字用正体。中文用 Songti SC，和衬线数学字体同一气质。等宽标签用 Menlo。
 - **构图**：动画区划 6×6 锚点网格（A1–F6），元素只通过网格放置；公式放顶行，图形占中下部；标签离对象不超过一格。放大看细节时，父图缩到画面的 30–40% 放在一角，变暗但不删。
 - **质感**：无。不发光、不加颗粒、不做粒子。
 
@@ -82,7 +82,7 @@ Visual style: dark mathematical explainer. Pure black background, no glow, no pa
 
 ## 引擎做法
 
-- **首选 Manim CE**。直接复用 `showcase/03-math-fourier/scenes/style.py`：`Grid`（6×6 锚点、`at()`、`area()`）、包围盒审计，以及修 `always_redraw` 丢 `z_index` 的 `live()` 包装。颜色只从一个 palette 模块取，代码里 grep 不到 palette 以外的 hex。
+- **首选 ManimGX**（CE 的同一套 API）。直接复用 `showcase/03-math-fourier/scenes/style.py`（已迁移）：`Grid`（6×6 锚点、`at()`、`area()`）、包围盒审计，以及修 `always_redraw` 丢 `z_index` 的 `live()` 包装。颜色只从一个 palette 模块取，代码里 grep 不到 palette 以外的 hex。
 - **网页引擎**（HyperFrames + KaTeX 或 Canvas）：公式用 `\textcolor` 按实体上色；形状统一重采样成 N 个点（例如 64 个），变换就是逐点 `lerp`，点、线段、面都能互相变。
 - **手写字**：Canvas 里 `strokeText` 配 `setLineDash([L, L])`，`lineDashOffset = L·(1 − u)` 让轮廓逐渐画出，u > 0.6 后填充渐入。
 - 样片 `swatch.js`：逐段做法见开头"样片里"。实现要点：点、向量、平行四边形都重采样成 64 个点的多边形，变换就是逐点插值；indicate 是一个 sin 脉冲的缩放，外加一圈向外扩散的短射线。
@@ -94,7 +94,7 @@ Visual style: dark mathematical explainer. Pure black background, no glow, no pa
 - 公式是否超出安全区，或和图形重叠？（打印包围盒）
 - 每个场景是否只讲了一个 insight？
 - 结论文字至少完整可读 2.5 s（风格节拍：结论要留时间想；比读时底线长）；放大或转场的中途，有没有不透明底色盖住被放大的部分？
-- Manim 陷阱：`self.play(..., rate_func=…)` 会覆盖每个子动画自己的缓动；`always_redraw` 会丢 `z_index`（见 `video-types/01`）。
+- Manim 陷阱（GX 同样适用）：`self.play(..., rate_func=…)` 会覆盖每个子动画自己的缓动；`always_redraw` 会丢 `z_index`（见 `video-types/01`）。
 
 ## 相关资源
 

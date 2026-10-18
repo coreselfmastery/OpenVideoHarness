@@ -80,14 +80,14 @@ npx remotion still <CompositionId> out/check/f120.png --frame=120
 npx remotion render <CompositionId> out/draft.mp4 --scale=0.5
 ```
 
-**Manim CE**
+**ManimGX**
 
 ```bash
-manim -ql scene.py MyScene                 # 480p15 快速渲染
-manim -ql -s scene.py MyScene              # 只存最后一帧
-manim -qh --fps 30 scene.py MyScene        # 成片 1080p30（-qh 默认 60fps，-qk 是 4K60）
-manim -ql --format png -n 30,31 scene.py MyScene   # 只渲染第 30–31 个动画为 PNG：与整片同帧做哈希比对，就是 Manim 的确定性检查
-# 拿到 mp4 后，用下面的 ffmpeg 通用命令拼联系表
+uv run manimgx inspect scene.py MyScene             # 不渲染视频：分镜/storyboard + 2D 布局检查（文字重叠/出画面/小字），有问题 exit 1
+uv run manimgx render -r 854x480 --fps 15 scene.py MyScene    # 草稿
+uv run manimgx render -r 1920x1080 --fps 30 scene.py MyScene   # 成片 1080p30（--fps 缺省 60；4K -r 3840x2160）
+uv run manimgx inspect scene.py MyScene -t 1.5,end -o out/check/inspect.png   # 只查指定时刻的帧（对应 CE 的 -n A,B + -s）
+# 拿到 mp4 后，用下面的 ffmpeg 通用命令拼联系表；输出与 storyboard 都写在场景文件旁边（-o 可改路径）
 ```
 
 **通用：从任何 mp4 取帧（ffmpeg，本机实测可用）**
@@ -156,7 +156,7 @@ ffmpeg -i out/det/w1/frame_%06d.png -i out/det/w3/frame_%06d.png -lavfi psnr=sta
   for f in out/det/w1/frame_*.png; do n=${f##*/}; cmp -s "$f" "out/det/w3/$n" || ffmpeg -nostdin -v info -i "$f" -i "out/det/w3/$n" -lavfi "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]psnr" -f null - 2>&1 | sed -n "s/.*average:\([0-9.inf]*\).*/$n \1 dB/p"; done
   ```
 
-长片不必全片都比。介绍片的做法是单独建一个 4 s 的局部 composition（用一个时间偏移变量把起点挪到要测的段落），6 s 就能渲完。Manim 的对应做法见上面 `--format png` 那一行。
+长片不必全片都比。介绍片的做法是单独建一个 4 s 的局部 composition（用一个时间偏移变量把起点挪到要测的段落），6 s 就能渲完。ManimGX 的对应做法是上面 `inspect -t` 那一行（按时刻取样写 PNG，再走同一套哈希/PSNR 比对）。
 
 ## 静默失败
 

@@ -1,4 +1,4 @@
-# Showcase 03: Building a square wave from sine waves (math / Manim CE)
+# Showcase 03: Building a square wave from sine waves (math / ManimGX)
 
 https://github.com/user-attachments/assets/c2368f76-b157-4a48-9945-8048a515efd4
 
@@ -6,10 +6,10 @@ https://github.com/user-attachments/assets/c2368f76-b157-4a48-9945-8048a515efd4
 
 | | |
 |---|---|
-| Type / route | `math` → `video-types/01-math-science-explainer.md`, engine Manim CE |
+| Type / route | `math` → `video-types/01-math-science-explainer.md`, engine ManimGX (built on Manim CE 2026-09-28; migrated to ManimGX 2026-10-18, see NOTES.md) |
 | Output | 1920x1080, 30 fps, **25.0 s** (750 frames), h264 in limited-range BT.709 + a stereo AAC soundtrack (English narration, a piano score and the partial sums made audible, mix profile `explainer`, added after the picture was finished: [Soundtrack](#soundtrack)), a soft en subtitle track, 2.9 MB |
-| Manim | Manim Community **v0.21.0**, Python 3.12.2 (uv), Cairo renderer, MacTeX for `MathTex` |
-| Render time (M3 Max) | final `-qh --fps 30`: **24.3 s** wall; draft `-ql`: ~22 s wall |
+| Engine | Now **ManimGX 0.1.1** (Python 3.14.8, uv; Rust/wgpu core, Typst math, no LaTeX). Original build: Manim CE v0.21.0, Python 3.12.2, Cairo renderer, MacTeX |
+| Render time | CE (M3 Max): final 24.3 s, draft ~22 s. ManimGX (2-core CPU, lavapipe): final 1080p30 **40.3 s**, draft 480p15 **10.9 s**; on a GPU (e.g. Kaggle T4) faster again |
 | Review iterations | 4 renders (v1 → v2 → v3 → **v4 = final**). Each had a contact sheet, strips of the key moves, a horn crop and a bbox audit; one fresh-context reviewer pass came between v3 and v4. Critiques are in [NOTES.md](NOTES.md) |
 | Agent wall time | ~20 min to the first delivered cut (v3), plus the reviewer-fix round |
 
@@ -73,21 +73,21 @@ showcase/03-math-fourier/tools/build_audio.sh --mux out.mp4     # … plus out.m
 ```
 The script decodes the narration master and cuts each line from it (`audio/vo/en/`), then runs `tools/foley.py`, `bin/vh sfx lib`, `bin/vh music` (delayed 0.3 s, with its beat map shifted), `bin/vh mix … profile=explainer`, `bin/vh qa` and, with `--mux`, `bin/vh mux` (the picture is copied, not re-encoded, and the moov goes first so a browser can start playing at once), then measures the true peak of the AAC encode and mixes again with a lower ceiling if it is over −1.5 dBTP. Every run gives the same bytes. Committed: `audio/script.txt`, `audio/vo_grid.json`, `audio/voiceover.en.flac`, `audio/timeline*.json`, `audio/captions.*`, `audio/score.json`, `audio/events.json`, `audio/music.beats.json`, `tools/foley.py`, `tools/build_audio.sh`. The WAVs, stems and reports are regenerated and ignored (`audio/.gitignore`).
 
-**Colour.** Manim's output was `yuv420p` with no colour tags and BT.601 limited-range pixels, which Chromium reads as BT.709: the running sum's `#FFFF00` showed as (255, 240, 0). `media/final.mp4` was re-encoded once, with the soundtrack, to limited-range BT.709 with all four colour tags: x264 `slow`, CRF 17, the same 750 frames at 30 fps (25.000 s; the old file's timestamps drifted to 24.999 s). The yellow now decodes as (254, 254, 1); see NOTES.md.
+**Colour.** Manim CE's output was `yuv420p` with no colour tags and BT.601 limited-range pixels, which Chromium reads as BT.709: the running sum's `#FFFF00` showed as (255, 240, 0). `media/final.mp4` was re-encoded once, with the soundtrack, to limited-range BT.709 with all four colour tags: x264 `slow`, CRF 17, the same 750 frames at 30 fps (25.000 s; the old file's timestamps drifted to 24.999 s). The yellow now decodes as (254, 254, 1); see NOTES.md. ManimGX (2026-10-18) already writes limited-range tagged pixels (matrix smpte170m / transfer sRGB / primaries bt709), so the delivery re-encode to BT.709 that the soundtrack mix does anyway is the only remaining step.
 
 ## Files
 - `BRIEF.md`, `STYLE.md` (entity-colour map, 6×6 grid), `STORYBOARD.md` (shots, reads with timings), `NOTES.md` (maths verification + review log incl. the reviewer pass), `LESSONS.md`
 - `scenes/fourier.py` (scene; `live()` = z-index-preserving `always_redraw`), `scenes/style.py` (palette, grid helper, bbox audit, polyline/clip helpers), `tools/verify_math.py`, `pyproject.toml`
 - Soundtrack: `audio/` (script, line grid, narration master, timelines, captions, score, events, beat map), `tools/foley.py`, `tools/build_audio.sh` (see [Soundtrack](#soundtrack))
 
-Reproduce (from a project folder created by `bin/vh new math <slug>` with these files copied in):
+Reproduce (from a project folder created by `bin/vh new math <slug>` with these files copied in; ManimGX since 2026-10-18):
 ```bash
-uv sync            # or: uv init --bare --python 3.12 && uv add manim
-export PYTHONWARNINGS=ignore::SyntaxWarning
-uv run python tools/verify_math.py
-uv run manim -qh --fps 30 scenes/fourier.py FourierSquareWave
-# Manim writes untagged BT.601 pixels: re-encode to limited-range BT.709 with all four tags (NOTES.md › Colour)
-ffmpeg -i media/videos/fourier/1080p30/FourierSquareWave.mp4 -map 0:v:0 -vf "setpts=N/30/TB,scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p,setparams=range=tv:colorspace=bt709:color_primaries=bt709:color_trc=bt709" -c:v libx264 -preset slow -crf 17 -r 30 -movflags +faststart picture.mp4
+uv sync            # or: uv init --bare --python 3.14 && uv add manimgx
+uv run --with scipy python tools/verify_math.py                        # scipy on demand (uv --with); numpy ships with the env
+uv run manimgx render -r 854x480 --fps 15 scenes/fourier.py FourierSquareWave   # draft (10.9 s wall on 2-core CPU)
+uv run manimgx inspect scenes/fourier.py FourierSquareWave                      # storyboard + layout checks (exit 1 on problems)
+uv run manimgx render -r 1920x1080 --fps 30 scenes/fourier.py FourierSquareWave # final; writes scenes/FourierSquareWave.mp4
+# ManimGX writes limited-range tagged pixels (matrix smpte170m); the delivery re-encode to BT.709 happens when the soundtrack is mixed (below)
 ```
 Then, in this repo: copy `picture.mp4` over `showcase/03-math-fourier/media/final.mp4`, put the soundtrack on it with `showcase/03-math-fourier/tools/build_audio.sh --mux /tmp/final.mp4` (it refuses to write over the file it reads the picture from), and move `/tmp/final.mp4` over `media/final.mp4`.
 

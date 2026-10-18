@@ -90,7 +90,7 @@ Visual style: archival documentary built only from still photographs, letters an
 
 ## 引擎做法
 
-- 首选 HyperFrames：`<img>` 加 GSAP，对 transform 按 t seek。也可以用 Remotion，或 Manim 的 `ImageMobject`。纯函数的写法：`camera(t)` 返回 `{scale, x, y}`，照片的 transform 取它的逆。
+- 首选 HyperFrames：`<img>` 加 GSAP，对 transform 按 t seek。也可以用 Remotion，或 ManimGX 的 `ImageMobject`。纯函数的写法：`camera(t)` 返回 `{scale, x, y}`，照片的 transform 取它的逆。
 - **取景**：给每张照片写一条 `{src, from: {cx, cy, z}, to: {cx, cy, z}, dur}`，坐标用照片的归一化坐标（0–1）。先在一张标注图上把目标细节框出来，再写数值。
 - **"切入时已经在动"**：`p = 0.15 + 0.7 * easeInOutSine(u)`，u 是本段进度。
 - **放大上限**：照片原始分辨率 ÷ 画面分辨率 ≥ 最终缩放倍数，否则会糊。建素材表时就把这个算好。

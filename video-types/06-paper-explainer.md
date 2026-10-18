@@ -13,7 +13,7 @@
 
 按内容分工，可以在同一个项目里混用：
 
-- **机制、公式、系统模型**（信道、拓扑、算法流程）用 Manim CE。
+- **机制、公式、系统模型**（信道、拓扑、算法流程）用 ManimGX。
 - **结构、结果、标题卡、论文信息**用 HyperFrames。它对版式、数字计数、字幕更顺手。
 - **报告录像型**（幻灯片 + 讲者）可以参考 Paper2Video 的通道拆分；本机没有 NVIDIA GPU，数字人部分做不了。
 
@@ -38,7 +38,7 @@
 |---|---|
 | 30 秒 teaser | 问题 5s → 关键想法的图 10s → 结果里最有说服力的一幕 10s → 标题、会议、链接 5s |
 | 3–5 分钟 | 动机和问题 → 系统模型 → 关键想法（1–2 个机制动画）→ 结果（1–2 张图）→ 一句话总结 + 论文信息 |
-| 10 分钟以上 | 用 Manim 或 HyperFrames 做幻灯片式分段，每段对应论文的一节；配 TTS 或你的录音 |
+| 10 分钟以上 | 用 ManimGX 或 HyperFrames 做幻灯片式分段，每段对应论文的一节；配 TTS 或你的录音 |
 
 3brown1blue 的 `paper-explainer.md` 里有更详细的五分钟模板，也分领域（ML、物理/工程、生物医学）给出了常见套路。3–5 分钟的讲解怎么排节拍、在哪里换挡，见 `playbook/09-narrative.md` 的模板 B。
 
@@ -61,7 +61,7 @@ Redraw figures as vectors; never screenshot the PDF. Pipelines reveal box by box
 Equations: show whole 2s → dim to 30% → explain term by term, coloring each when done.
 Results: at most 1–2 comparisons that carry the claim, as charts, not tables.
 Animation starts ~0.5s before the narration mentions it; ~1s hold after each narrated sentence.
-Engines: Manim CE for mechanisms/equations, HyperFrames for title/structure/results; concat with ffmpeg.
+Engines: ManimGX for mechanisms/equations, HyperFrames for title/structure/results; concat with ffmpeg.
 ```
 
 ## 自查重点

@@ -32,7 +32,7 @@ if [ -n "$out" ]; then   # the picture is read from media/final.mp4: writing ove
 fi
 
 # 1 foley: the custom sounds + the event list, and the 21 built-ins beside them (the mix places every event itself)
-uv run -q --no-project --with numpy --with scipy python "$FILM/tools/foley.py"   # --no-project: run from 03's folder, uv would sync its Manim env
+uv run -q --no-project --with numpy --with scipy python "$FILM/tools/foley.py"   # --no-project: run from 03's folder, uv would sync its ManimGX env
 "$VH" sfx lib "$A/sfx" >/dev/null
 # 2 music: render the score (it starts with the film: no offset)
 "$VH" music "$A/score.json" "$A/music.wav" >/dev/null

@@ -3,7 +3,7 @@
 <!-- One page. Type doc (video-types/01) overrides template defaults: pure black bg, CMU Serif/LaTeX, 6x6 anchor grid. -->
 
 ## Canvas
-- 1920x1080, 30 fps. Manim frame = 14.222 x 8 units → 135 px/unit.
+- 1920x1080, 30 fps. ManimGX/CE frame = 14.222 x 8 units → 135 px/unit (same in both engines for 16:9).
 - Safe box (EBU 90%): 96 px left/right, 54 px top/bottom → x ∈ [-6.40, 6.40], y ∈ [-3.60, 3.60] units.
 - **Anchor grid** (Code2Video style, but over the whole safe box because there is no lecture column): 6 cols × 6 rows, rows A–F top→bottom, cols 1–6 left→right. Cell = 2.133 × 1.20 units (288 × 162 px).
   Cell centres: cols x = -5.33, -3.20, -1.07, 1.07, 3.20, 5.33; rows y = 3.0, 1.8, 0.6, -0.6, -1.8, -3.0.
@@ -25,7 +25,7 @@ Opacity layers: primary 1.0, context 0.35 (dimmed equation), structure 0.25.
 
 ## Type
 - LaTeX only (`MathTex`/`Tex`, Computer Modern ≈ CMU Serif). No Pango `Text()`, so the 3b1b "Menlo for Text()" rule does not apply.
-- Sizes (Manim font_size): equation 46, counter 40, tick values 32, overshoot label 36. Check rendered glyph heights in the bbox audit.
+- Sizes (ManimGX font_size; same scale as CE): equation 46, counter 40, tick values 32, overshoot label 36. Check rendered glyph heights in the bbox audit.
 
 ## Motion tokens
 | token | value |

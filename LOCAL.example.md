@@ -2,7 +2,7 @@
 
 - 硬件：{芯片 / GPU / 内存}
 - 已装工具：{Node 版本、ffmpeg 版本、Chrome 路径、Python/uv、LaTeX}（`bin/vh doctor` 的输出可以直接贴进来）
-- 已装引擎：{ClaudeAnimationBase ✓ / HyperFrames / Remotion / Manim}
+- 已装引擎：{ClaudeAnimationBase ✓ / HyperFrames / Remotion / ManimGX（uv 按项目装，见 engines/README.md）}
 - 渲染速度：{ClaudeAnimationBase 1080p 每帧耗时；其他引擎}
 - 可用的 API key（只写变量名，不写值）：{ELEVENLABS_API_KEY / FAL_KEY / …}
 - 个人资料目录：{论文、数据、素材放在哪里}

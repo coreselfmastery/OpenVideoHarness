@@ -10,7 +10,7 @@ Explainers, science shorts, product films, music videos, data stories, paper tal
 
 ![License: MIT](https://img.shields.io/badge/license-MIT-black)
 ![Agents](https://img.shields.io/badge/agents-Claude%20Code%20%7C%20Codex-orange)
-![Engines](https://img.shields.io/badge/engines-HyperFrames%20%7C%20Manim%20%7C%20Remotion%20%7C%20p5.brush%20%7C%20Blender-blue)
+![Engines](https://img.shields.io/badge/engines-HyperFrames%20%7C%20ManimGX%20%7C%20Remotion%20%7C%20p5.brush%20%7C%20Blender-blue)
 
 
 https://github.com/user-attachments/assets/48923404-eff1-41cd-b303-82c9ede51c1f
@@ -24,7 +24,7 @@ https://github.com/user-attachments/assets/48923404-eff1-41cd-b303-82c9ede51c1f
 
 ## What this is
 
-Coding agents can already make a video from one sentence: they write a program that computes every frame, a browser (or Manim) renders the frames, and a soundtrack goes on top. Getting a good one every time is the hard part. The same model can be brilliant once and then lose the pacing, glow everything and invent numbers the next time, because it has no production process to follow and no way to check its own work.
+Coding agents can already make a video from one sentence: they write a program that computes every frame, a browser (or ManimGX) renders the frames, and a soundtrack goes on top. Getting a good one every time is the hard part. The same model can be brilliant once and then lose the pacing, glow everything and invent numbers the next time, because it has no production process to follow and no way to check its own work.
 
 This repo is that process and those checks, written as docs an agent can follow and a CLI, `bin/vh`:
 
@@ -34,7 +34,7 @@ This repo is that process and those checks, written as docs an agent can follow 
 - **Sound included.** Chinese and English voiceover, bilingual subtitles, a score and sound effects written as code, mixing and an audio check.
 - **A style library, and Blender.** 31 styles distilled from well-known films and design, each with a rendered sample, to borrow from rather than copy; and when a shot needs real glass, volumetric light or a million particles, the agent drives Blender with Python.
 
-It isn't a new rendering engine. It sits on top of HyperFrames, Manim, Remotion, p5.brush and Blender and tells the agent how to use them well.
+It isn't a new rendering engine. It sits on top of HyperFrames, ManimGX, Remotion, p5.brush and Blender and tells the agent how to use them well.
 
 ## What it makes
 
@@ -57,7 +57,7 @@ https://github.com/user-attachments/assets/c2368f76-b157-4a48-9945-8048a515efd4
 
 <sub><a href="https://github.com/ZLHad/OpenVideoHarness/releases/download/media/03-math-explainer.mp4">Download</a></sub>
 </td>
-<td valign="top"><b><a href="showcase/03-math-fourier/">03 · Math explainer in the 3Blue1Brown style</a></b> (Manim · 25 s · 1920×1080)<br>Sine waves stack into a square wave and land on the Gibbs overshoot. English narration; each harmonic sounds its own note.<br><b><a href="showcase/03-math-fourier/README.md#the-request-this-was-built-from">Request</a>:</b> "Building a square wave from sine waves"</td>
+<td valign="top"><b><a href="showcase/03-math-fourier/">03 · Math explainer in the 3Blue1Brown style</a></b> (ManimGX · 25 s · 1920×1080)<br>Sine waves stack into a square wave and land on the Gibbs overshoot. English narration; each harmonic sounds its own note.<br><b><a href="showcase/03-math-fourier/README.md#the-request-this-was-built-from">Request</a>:</b> "Building a square wave from sine waves"</td>
 </tr>
 <tr>
 <td width="40%" valign="top">
@@ -160,12 +160,12 @@ A few rules never relax ([CLAUDE.md](CLAUDE.md) has them all): every frame depen
 
 | Type | Good for | Main engine | Docs |
 |---|---|---|---|
-| 01 Math and science explainers | 3Blue1Brown-style animations of how something works | Manim | [01](video-types/01-math-science-explainer.md) |
+| 01 Math and science explainers | 3Blue1Brown-style animations of how something works | ManimGX | [01](video-types/01-math-science-explainer.md) |
 | 02 Science shorts | TikTok/Douyin, Bilibili, Xiaohongshu, YouTube Shorts | HyperFrames | [02](video-types/02-knowledge-short.md) |
 | 03 Product and launch films | Apps, SaaS, open-source projects, feature demos | HyperFrames | [03](video-types/03-product-promo.md) |
 | 04 Lyric and music videos | Animation cut to a song | p5.brush or HyperFrames | [04](video-types/04-lyric-music-video.md) |
 | 05 Data stories | Animated charts and numbers | HyperFrames + SVG | [05](video-types/05-data-story.md) |
-| 06 Paper explainers | Conference videos, research talks | Manim + HyperFrames | [06](video-types/06-paper-explainer.md) |
+| 06 Paper explainers | Conference videos, research talks | ManimGX + HyperFrames | [06](video-types/06-paper-explainer.md) |
 | 07 Hand-drawn shorts | Watercolor, whiteboard, paper cut-out, character shorts; Chinese characters written stroke by stroke | p5.brush (bundled) | [07](video-types/07-hand-drawn.md) |
 | 08 Meme edits | Brutalist, tech-Twitter quick cuts | HyperFrames | [08](video-types/08-brutalist-meme.md) |
 | 09 Edits of your own footage (experimental) | Talking heads and interviews: cut filler, add captions and graphics, make a vertical version | HyperFrames | [09](video-types/09-editing-talking-head.md) |
@@ -220,9 +220,9 @@ Apart from the level, you can name what you want to decide yourself: the hook, t
 | macOS or Linux, git | everything (Windows is untested) |
 | Node.js 22+, Google Chrome | rendering in the browser |
 | FFmpeg | encoding, mixing, checks |
-| Python 3 + [uv](https://github.com/astral-sh/uv) | the sound tools, contact sheets, Manim; their packages install into uv's cache on first use |
+| Python 3 + [uv](https://github.com/astral-sh/uv) | the sound tools, contact sheets, ManimGX (needs Python 3.13/3.14; uv downloads it); their packages install into uv's cache on first use |
 | Apple Silicon | local Qwen3-TTS voiceover (not needed with a cloud voice) |
-| LaTeX | formulas in Manim |
+| — | no LaTeX needed: ManimGX typesets formulas with built-in Typst (New Computer Modern) |
 | Blender 5.2 | only for 3D shots; the sandboxed render scripts run on macOS for now |
 
 - **Cost.** Rendering, music and sound effects run locally and cost nothing. What costs money is the agent itself (a Claude Code or Codex subscription, or API usage), plus any cloud voice or generated video you choose, billed by that provider; keys are always read from environment variables.
@@ -274,7 +274,7 @@ Pull requests are welcome: new video types (`video-types/`), new styles with the
 
 ## Thanks
 
-To HyperFrames, Remotion, Manim, p5.brush, Three.js, Blender, Qwen3-TTS, mlx-audio and FFmpeg; to research such as Code2Video, Paper2Video and TheoremExplainAgent; to open projects including ClaudeAnimationBase, PDoomVideo, functional-emotions-video, Battle-of-Austerlitz-Film, Guizang's product-video skill, lemo-opuscar, OpenMontage and awesome-opus5-5-videos; and to the creators who share experiments and prompts in public, including Movez and Eian. The full list, licenses and what each was used for: [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
+To HyperFrames, Remotion, ManimGX (and the Manim CE API it implements), p5.brush, Three.js, Blender, Qwen3-TTS, mlx-audio and FFmpeg; to research such as Code2Video, Paper2Video and TheoremExplainAgent; to open projects including ClaudeAnimationBase, PDoomVideo, functional-emotions-video, Battle-of-Austerlitz-Film, Guizang's product-video skill, lemo-opuscar, OpenMontage and awesome-opus5-5-videos; and to the creators who share experiments and prompts in public, including Movez and Eian. The full list, licenses and what each was used for: [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md).
 
 This is an independent project, not affiliated with Anthropic, HeyGen, Remotion, Show Lab or Alibaba Cloud.
 

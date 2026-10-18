@@ -17,7 +17,7 @@ ClaudeAnimationBase 在 `engines/` 下，依赖已装好。清单里的其他项
 ## 如果只选 5 个
 
 1. **HyperFrames**：主力渲染器。纯 HTML + GSAP，Claude 最擅长写；Apache-2.0；自带 lint、snapshot、check 自检；官方 skills 直接覆盖产品宣传、科普竖屏、歌词 MV。偏好 React 就换 Remotion + `remotion-dev/skills`，思路相通。
-2. **Manim CE + `manim_skill` + `manim-voiceover`**：公式、几何、算法、论文机制需要精确，没有替代品。voiceover 能在某个词上触发动画。
+2. **ManimGX**（manimgx 0.1.1，Rust/wgpu GPU 核，实现的就是 Manim CE 的 Python API）：公式、几何、算法、论文机制需要精确，没有替代品。公式用内置 Typst 排版（不装 LaTeX）；`self.say`/`add_sound` 能按词触发动画、加声音，不再需要 manim-voiceover。
 3. **ClaudeAnimationBase**（配 PDoomVideo 当范例）：手绘质感，已在本机跑通；流程在 Claude 上验证过。PDoomVideo 没有 license，只能参考。
 4. **mlx-audio 跑 Qwen3-TTS**：在 Apple Silicon 上本地做中文配音，Apache-2.0。
 5. **whisper.cpp 或 FunASR 做时间戳 + librosa 或 beat_this 做节拍**：导出成 `timeline.json`，前三个渲染器都从这里读时间。中文字幕用 FunASR 更准；已有讲稿或歌词用 ctc-forced-aligner。
@@ -48,7 +48,8 @@ ClaudeAnimationBase 在 `engines/` 下，依赖已装好。清单里的其他项
 
 | 项目 | 说明 | ⭐ / push | License | CC | 适合 |
 |---|---|---|---|---|---|
-| [ManimCommunity/manim](https://github.com/ManimCommunity/manim) | Manim 社区版（CE），文档全，LLM 语料多 | 41.1k / 2026-09 | MIT | A | 数学、算法、物理、论文 |
+| [academa-labs/manimgx](https://github.com/academa-labs/manimgx) | Manim CE 的 Python API，Rust/wgpu GPU 核渲染；内置 Typst 排公式；本仓库现在用的数学引擎 | 1.6k / 2026-10 | MIT | A | 数学、算法、物理、论文 |
+| [ManimCommunity/manim](https://github.com/ManimCommunity/manim) | Manim 社区版（CE），文档全，LLM 语料多；ManimGX 实现的就是它的 API | 41.1k / 2026-09 | MIT | A | 数学、算法、物理、论文（已被本仓库换为 ManimGX） |
 | [3b1b/manim](https://github.com/3b1b/manim) | ManimGL，3b1b 原版；和 CE 不兼容，LLM 容易混用 | 94.3k / 2026-09 | MIT | B | 3b1b 风格 |
 | [3b1b/videos](https://github.com/3b1b/videos) | 3b1b 各期场景源码 | 11.3k | CC BY-NC-SA [NC] | 参考语料 | — |
 | [ManimCommunity/manim-voiceover](https://github.com/ManimCommunity/manim-voiceover) | 给 Manim 配音，按词触发动画 | 0.3k / 2026-06 | MIT | A | 带旁白讲解 |
@@ -67,7 +68,7 @@ ClaudeAnimationBase 在 `engines/` 下，依赖已装好。清单里的其他项
 | [icip-cas/PPTAgent](https://github.com/icip-cas/PPTAgent) | 论文或文档生成 PPT | 5.1k / 2026-09 | MIT | B |
 | [souzatharsis/podcastfy](https://github.com/souzatharsis/podcastfy) | 论文或网页做成双人播客音频 | 6.6k / 2026-05 | Apache-2.0 | A |
 
-对研究者更实用的做法：让 Claude Code 直接读 `.tex`，用 Manim 或 HyperFrames 出画面，再配 TTS。
+对研究者更实用的做法：让 Claude Code 直接读 `.tex`，用 ManimGX 或 HyperFrames 出画面，再配 TTS。
 
 ## 4. 短视频自动化流水线
 

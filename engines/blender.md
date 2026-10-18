@@ -23,7 +23,7 @@
 | 玻璃、水、皮肤（SSS）、焦散、体积光的产品镜头 | Blender（Cycles） | 路径追踪的光传输 |
 | 布料、液体、烟 | Blender + 烘焙（缓存当素材） | Three.js 没有 |
 | 非写实的 3D（toon、平涂、线稿） | Three.js 或 Blender（EEVEE） | 看有没有模型、要不要真运动模糊和景深 |
-| 公式曲面、向量场、几何对象 | Manim 的 `ThreeDScene` | 精确 |
+| 公式曲面、向量场、几何对象 | ManimGX 的 `ThreeDScene` | 精确 |
 | 超过 30 秒、4K、大量镜头 | 先算渲染账 | 见"渲染时间" |
 
 Blender 的增量只在路径追踪的光传输、物理模拟、真实运动模糊和景深、导入真实 3D 资产这几件事上。按类型：03 产品宣传收益最高（英雄镜头 1–3 个交给 Blender，UI 镜头仍是 HyperFrames；只用用户自己的模型，视图变换选 PBR Neutral）；01 讲解和 04 MV 可以做少量插页（公式和几何仍用 Manim，歌词和字仍在 HyperFrames）；02 短片最多 1–2 个 3D 镜头；05、07、08 不建议。风格里 `product-keynote`、`clockwork-map`、`monumental-scifi` 最可能受益，`blueprint` 和 `silhouette-papercut` 的 `STYLE.md` 明令不做 3D。reviewer 看 3D 镜头时，额外给它"为什么这个镜头需要 Blender（一句话）"，说不出来就降级成 Three.js 或 2D。

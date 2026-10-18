@@ -41,3 +41,18 @@ ffmpeg -ss 8.1 -i out/final.mp4 -t 2.9 -vf "fps=5,scale=480:-1,tile=5x3" -frames
 # determinism: render only animations 30–31 as PNGs and compare hashes with a full PNG render
 uv run manim -ql --format png -n 30,31 --media_dir /tmp/jump scenes/fourier.py FourierSquareWave
 ```
+
+## 2026-10-18 · Migrated to ManimGX (from Manim CE 0.21.0)
+
+The engine switch the whole repo made. What actually changed in this project:
+
+- **The scene code needed three edits, nothing else** — the API really is CE's:
+  1. `from manim import *` → `from manimgx import *` **plus** `import numpy as np` (manimgx does not re-export numpy the way `manim`'s star import did).
+  2. `pathlib.Path` must be aliased (`from pathlib import Path as FsPath`) and used for the audit-log unlink: `from manimgx import *` exports a `Path` *mobject* class that silently shadows `pathlib.Path` — the failure was `'Path' object has no attribute 'unlink'`, pointing at the unlink line.
+  3. `rate_functions.ease_in_out_sine` (3 sites) → `ease_in_out_sine`: the `rate_functions` module path is gone; every rate function lives on the package (`m.smooth`, `m.ease_in_out_sine`).
+- `audit()` keeps `get_all_points()` (family-wide points) — ManimGX has it too, with the same meaning; `.points` alone would skip MathTex (glyphs live in the parts, the parent's own points are empty).
+- Render commands: `-ql` → `render -r 854x480 --fps 15`; `-qh --fps 30` → `render -r 1920x1080 --fps 30`. Output lands **beside the scene file** (`scenes/FourierSquareWave.mp4`), not `media/videos/…`.
+- `manimgx inspect` (new capability): storyboard + 2D layout checks, exit 1 on problems — a free extra QA gate CE never had; use it before every render.
+- Timings on 2-core CPU (lavapipe): draft 10.9 s wall, final 40.3 s wall (25.0 s video). CE on M3 Max was ~22 s / 24.3 s — GX on CPU already in the same league; on a GPU (T4/Vulkan) it is faster again.
+- No more `PYTHONWARNINGS=ignore::SyntaxWarning` (that was pydub under CE's Python 3.12 env) and no MacTeX: `MathTex` goes through built-in Typst (New Computer Modern). `\Big(` etc. all converted fine; `Tex(r"$\approx 9\%$ of the jump")` too.
+- Colour: GX writes limited-range **tagged** pixels (smpte170m / sRGB transfer / bt709 primaries), so the untagged-BT.601 surprise from 2026-10-01 is gone; the BT.709 delivery re-encode still happens where it always did — in the soundtrack mix step.
