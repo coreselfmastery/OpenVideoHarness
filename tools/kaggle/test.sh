@@ -266,7 +266,7 @@ cp "$TESTROOT/.kaggle/env.software.sh" "$TESTROOT/.kaggle/env.sh"
 : > "$NPXLOG"
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" OVH_TEST_MEM_MB=24000 bash tools/kaggle/render.sh "$P" 2>&1)
 flags=$(sed -n '1p' "$NPXLOG")
-cores=$(( $(nproc 2>/dev/null || echo 2) - 1 )); [ $cores -lt 1 ] && cores=1; [ $cores -gt 6 ] && cores=6
+cores=$(( $(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2) - 1 )); [ $cores -lt 1 ] && cores=1; [ $cores -gt 6 ] && cores=6
 [ 3 -lt $cores ] && cores=3    # 24000 MB free / 6 GB a browser
 echo "$flags" | grep -q -- "--workers $cores" && ok "software workers follow the measured memory ($cores on this box)" || bad "software workers wrong: [$flags] (want $cores)"
 echo "$flags" | grep -q -- "--gpu" && bad "no NVENC, no --gpu" || ok "no NVENC means no --gpu flag"
