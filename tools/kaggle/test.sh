@@ -543,10 +543,13 @@ if echo "$E2E_OUT" | grep -q "no headless Chrome found"; then
 else
   # A borrowed CI host can wedge (a Chrome that stops answering makes the halves' wait unbounded). A
   # budget turns that into a skip — the plan and the args are checked above — instead of a suite that
-  # hangs until the workflow's own timeout. A healthy macOS runner draws this film in ~380 s (Linux:
-  # ~30 s); the default budget is nearly twice the slow one. OVH_TEST_E2E_BUDGET overrides it (seconds).
-  E2E_BUDGET=${OVH_TEST_E2E_BUDGET:-720}
-  case "$E2E_BUDGET" in ''|*[!0-9]*) E2E_BUDGET=720 ;; esac
+  # hangs until the workflow's own timeout. A healthy macOS runner draws this film in ~340-380 s
+  # (Linux: ~30 s); the budget sits above the healthy envelope. The three budgets together must
+  # also fit the workflow's 40-minute ceiling with every one of them tripped: 600 (split) + 90
+  # (killed-split) + 240 (bake section) + 480 (engine E2E) + the stub sections ≈ 25 min — the film
+  # tools before them take ~9. OVH_TEST_E2E_BUDGET overrides it (seconds).
+  E2E_BUDGET=${OVH_TEST_E2E_BUDGET:-600}
+  case "$E2E_BUDGET" in ''|*[!0-9]*) E2E_BUDGET=600 ;; esac
   E2E_LOG="$WORK/e2e-run.log"
   T0=$(date +%s)
   ( unset CHROME_PATH; cd "$TESTROOT" && exec bash tools/kaggle/render-split.sh "$E2E" --encoder x264 --tier draft ) >"$E2E_LOG" 2>&1 &
@@ -623,8 +626,9 @@ fi
 
 # ── bake + the css-cost pair + a real render.sh through the engine, when Chrome is here ─────────
 # (the split E2E above already proved Chrome one way or the other: E2E_OUT's browser line carries
-# the path it found. Everything in this section is budget-bounded the same way — a slow host is a
-# fact about the host, not a verdict about the code.)
+# the path it found. All three real-render sections in here carry their own budget — a slow host
+# is a fact about the host, not a verdict about the code; run 39127448500 spent its last half hour
+# silent because this section said "budget-bounded" and nothing below it was.)
 CHROME_BIN=$(printf '%s\n' "$E2E_OUT" | sed -n 's/^.*browser  : \(.*\) (both halves on GPU 0.*$/\1/p' | head -1)
 if [ -z "$CHROME_BIN" ]; then
   ok "bake / css-cost / render.sh end to end: skipped (no Chrome on this machine; the guards and the plans are checked above)"
@@ -633,51 +637,83 @@ else
   # Chrome's raster is platform-specific (macOS run 39123478825: the same page 29.7 dB off the
   # Linux-baked scene.png — SF vs DejaVu text alone), so the reference picture is per platform:
   # this platform's own reference is a second bake, and the twins below carry it as their scene.
+  # The whole Chrome trio — bake, second bake, the twins, the --res render — runs under ONE budget
+  # (a healthy host draws all of it in well under a minute; a Chrome that stops answering anywhere
+  # in it is one honest skip, not four unbounded waits). OVH_TEST_BAKE_BUDGET overrides (seconds).
   printf '\033[36m→\033[0m bake + the css-cost pair (a real browser: the bake, the twin films, the tier)\n'
   COSTDIR="$ROOT/tools/kaggle/fixture/css-cost"
-  OUT=$(node "$ROOT/tools/film/bake.mjs" "$COSTDIR/index.html" --out "$WORK/scene-fresh.png" --browser "$CHROME_BIN" 2>&1); rc=$?
-  chk "a fresh bake of the fixture exits 0" "$rc" "0"
-  echo "$OUT" | grep -qF '1 element(s) of [[data-bake-hide]] hidden' && ok "the bake hid the animated layer the page marks" || bad "the bake hid the wrong thing: [$OUT]"
-  if [ "$rc" = 0 ]; then
-    # this platform's own reference: a second bake of the same page must be the same picture
-    OUT2=$(node "$ROOT/tools/film/bake.mjs" "$COSTDIR/index.html" --out "$WORK/scene-fresh2.png" --browser "$CHROME_BIN" 2>&1); rc2=$?
-    if [ "$rc2" = 0 ]; then
-      PSNR=$(ffmpeg -hide_banner -i "$WORK/scene-fresh.png" -i "$WORK/scene-fresh2.png" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
-      case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "two bakes of the same page are the same picture (PSNR ${PSNR} dB — this platform's own reference)" || bad "two bakes drifted: PSNR ${PSNR} dB" ;; *)
-        bad "the two-bake PSNR could not be read: [$PSNR]" ;;
-      esac
-    else
-      bad "the second bake did not render: [$OUT2]"
+  TWINDIR="$WORK/css-cost-twin"
+  B_BUDGET=${OVH_TEST_BAKE_BUDGET:-240}
+  case "$B_BUDGET" in ''|*[!0-9]*) B_BUDGET=240 ;; esac
+  B_STATUS="$WORK/bake-status"; : > "$B_STATUS"
+  T0=$(date +%s)
+  (
+    node "$ROOT/tools/film/bake.mjs" "$COSTDIR/index.html" --out "$WORK/scene-fresh.png"  --browser "$CHROME_BIN" >"$WORK/bake1.log" 2>&1; echo "bake1=$?" >> "$B_STATUS"
+    node "$ROOT/tools/film/bake.mjs" "$COSTDIR/index.html" --out "$WORK/scene-fresh2.png" --browser "$CHROME_BIN" >"$WORK/bake2.log" 2>&1; echo "bake2=$?" >> "$B_STATUS"
+    rm -rf "$TWINDIR"; cp -R "$COSTDIR" "$TWINDIR"; cp "$WORK/scene-fresh.png" "$TWINDIR/assets/scene.png"
+    node "$ROOT/tools/film/render.mjs" "$COSTDIR/index.html" --browser "$CHROME_BIN" --out "$WORK/css-live.mp4"   --fps 30 --crf 16 --preset medium >"$WORK/twin-live.log" 2>&1; echo "live=$?"   >> "$B_STATUS"
+    node "$ROOT/tools/film/render.mjs" "$TWINDIR/baked.html"     --browser "$CHROME_BIN" --out "$WORK/css-baked.mp4" --fps 30 --crf 16 --preset medium >"$WORK/twin-baked.log" 2>&1; echo "baked=$?" >> "$B_STATUS"
+    node "$ROOT/tools/film/render.mjs" "$COSTDIR/index.html" --browser "$CHROME_BIN" --out "$WORK/css-270.mp4"  --fps 30 --res 270p --crf 16 --preset medium >"$WORK/res270.log" 2>&1; echo "res270=$?" >> "$B_STATUS"
+  ) &
+  BP=$!
+  B_END=$((T0 + B_BUDGET))
+  while kill -0 "$BP" 2>/dev/null && [ "$(date +%s)" -lt "$B_END" ]; do sleep 2; done
+  if kill -0 "$BP" 2>/dev/null; then    # over the budget: a slow or wedged runner, not a verdict
+    kill -TERM "$BP" 2>/dev/null
+    for _ in 1 2 3 4 5 6 7 8; do kill -0 "$BP" 2>/dev/null || break; sleep 1; done
+    kill -KILL "$BP" 2>/dev/null || true; wait "$BP" 2>/dev/null
+    # the drivers, and a browser that stopped answering (this section's Chrome is the only one
+    # alive here: the split above closed, the engine below brings its own)
+    pkill -TERM -f 'tools/film/(bake|render)\.mjs' 2>/dev/null; pkill -TERM -f 'vh-textcheck-' 2>/dev/null
+    sleep 1
+    pkill -KILL -f 'tools/film/(bake|render)\.mjs' 2>/dev/null; pkill -KILL -f 'vh-textcheck-' 2>/dev/null
+    T1=$(date +%s)
+    ok "the bake/twins/--res renders: skipped (over the ${B_BUDGET} s budget after $((T1-T0)) s — a slow or wedged runner; the --res guards and the bake's plans are stub-checked above)"
+  else
+    wait "$BP" 2>/dev/null
+    rc=$(sed -n 's/^bake1=//p' "$B_STATUS"); rc2=$(sed -n 's/^bake2=//p' "$B_STATUS")
+    live_rc=$(sed -n 's/^live=//p' "$B_STATUS"); baked_rc=$(sed -n 's/^baked=//p' "$B_STATUS"); res_rc=$(sed -n 's/^res270=//p' "$B_STATUS")
+    OUT=$(cat "$WORK/bake1.log" 2>/dev/null)
+    chk "a fresh bake of the fixture exits 0" "${rc:-1}" "0"
+    echo "$OUT" | grep -qF '1 element(s) of [[data-bake-hide]] hidden' && ok "the bake hid the animated layer the page marks" || bad "the bake hid the wrong thing: [$OUT]"
+    if [ "${rc:-1}" = 0 ]; then
+      # this platform's own reference: a second bake of the same page must be the same picture
+      if [ "${rc2:-1}" = 0 ]; then
+        PSNR=$(ffmpeg -hide_banner -i "$WORK/scene-fresh.png" -i "$WORK/scene-fresh2.png" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
+        case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "two bakes of the same page are the same picture (PSNR ${PSNR} dB — this platform's own reference)" || bad "two bakes drifted: PSNR ${PSNR} dB" ;; *)
+          bad "the two-bake PSNR could not be read: [$PSNR]" ;;
+        esac
+      else
+        bad "the second bake did not render: [$(cat "$WORK/bake2.log" 2>/dev/null | tail -c 300)]"
+      fi
+      # the committed scene.png was baked on Linux: it is this fixture's reference only there
+      if [ "$(uname -s)" = Linux ]; then
+        PSNR=$(ffmpeg -hide_banner -i "$WORK/scene-fresh.png" -i "$COSTDIR/assets/scene.png" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
+        case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "the fresh bake matches the committed scene.png (PSNR ${PSNR} dB, the reference was baked on Linux)" || bad "the bake drifted from the committed PNG: PSNR ${PSNR} dB" ;; *)
+          bad "the bake-vs-committed PSNR could not be read: [$PSNR]" ;;
+        esac
+      else
+        ok "the committed scene.png is a Linux reference; on $(uname -s) Chrome's own raster differs — the two-bake check above is this platform's, and the twins below carry the fresh bake"
+      fi
+      # the twin films: the same picture, one with the live blur and one from the baked PNG — the
+      # baked side runs on the copy above, whose scene.png is this platform's fresh bake, so the
+      # comparison measures live-vs-baked, never this-platform-vs-the-reference's-platform
+      if [ "${live_rc:-1}" = 0 ] && [ "${baked_rc:-1}" = 0 ]; then
+        PSNR=$(ffmpeg -hide_banner -i "$WORK/css-live.mp4" -i "$WORK/css-baked.mp4" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
+        case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "the live-blur film and the baked-PNG film are the same picture (PSNR ${PSNR} dB over this platform's own scene, well over bin/vh patch's 40 dB gate)" || bad "the twin films drifted: PSNR ${PSNR} dB" ;; *)
+          bad "the twin-film PSNR could not be read: [$PSNR]" ;;
+        esac
+      else
+        bad "a twin film did not render (live=${live_rc:-none} baked=${baked_rc:-none}): [$(tail -c 300 "$WORK/twin-live.log" "$WORK/twin-baked.log" 2>/dev/null)]"
+      fi
+      # the --res tier on a real render: 270p of a 960x540 page is a 480x270 film
+      if [ "${res_rc:-1}" = 0 ]; then
+        dims=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$WORK/css-270.mp4" 2>/dev/null)
+        chk "a --res 270p render comes out 480x270 (the page's own layout at half the pixels)" "$dims" "480,270"
+      else
+        bad "the --res 270p render failed: [$(tail -c 300 "$WORK/res270.log" 2>/dev/null)]"
+      fi
     fi
-    # the committed scene.png was baked on Linux: it is this fixture's reference only there
-    if [ "$(uname -s)" = Linux ]; then
-      PSNR=$(ffmpeg -hide_banner -i "$WORK/scene-fresh.png" -i "$COSTDIR/assets/scene.png" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
-      case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "the fresh bake matches the committed scene.png (PSNR ${PSNR} dB, the reference was baked on Linux)" || bad "the bake drifted from the committed PNG: PSNR ${PSNR} dB" ;; *)
-        bad "the bake-vs-committed PSNR could not be read: [$PSNR]" ;;
-      esac
-    else
-      ok "the committed scene.png is a Linux reference; on $(uname -s) Chrome's own raster differs — the two-bake check above is this platform's, and the twins below carry the fresh bake"
-    fi
-    # the twin films: the same picture, one with the live blur and one from the baked PNG — the
-    # baked side runs on a copy of the fixture whose scene.png is this platform's fresh bake, so
-    # the comparison measures live-vs-baked, never this-platform-vs-the-reference's-platform
-    TWINDIR="$WORK/css-cost-twin"; rm -rf "$TWINDIR"; cp -R "$COSTDIR" "$TWINDIR"
-    cp "$WORK/scene-fresh.png" "$TWINDIR/assets/scene.png"
-    node "$ROOT/tools/film/render.mjs" "$COSTDIR/index.html" --browser "$CHROME_BIN" \
-      --out "$WORK/css-live.mp4" --fps 30 --crf 16 --preset medium >/dev/null 2>&1 && \
-    node "$ROOT/tools/film/render.mjs" "$TWINDIR/baked.html" --browser "$CHROME_BIN" \
-      --out "$WORK/css-baked.mp4" --fps 30 --crf 16 --preset medium >/dev/null 2>&1 && \
-    { PSNR=$(ffmpeg -hide_banner -i "$WORK/css-live.mp4" -i "$WORK/css-baked.mp4" -filter_complex psnr -f null - 2>&1 | sed -n 's/.*average:\([^ ]*\).*/\1/p' | tail -1)
-      case "$PSNR" in inf|*[0-9]) awk -v p="$PSNR" 'BEGIN{exit !(p=="inf" || p>=40)}' && ok "the live-blur film and the baked-PNG film are the same picture (PSNR ${PSNR} dB over this platform's own scene, well over bin/vh patch's 40 dB gate)" || bad "the twin films drifted: PSNR ${PSNR} dB" ;; *)
-        bad "the twin-film PSNR could not be read: [$PSNR]" ;;
-      esac
-    } || bad "a twin film did not render"
-    # the --res tier on a real render: 270p of a 960x540 page is a 480x270 film
-    node "$ROOT/tools/film/render.mjs" "$COSTDIR/index.html" --browser "$CHROME_BIN" \
-      --out "$WORK/css-270.mp4" --fps 30 --res 270p --crf 16 --preset medium >/dev/null 2>&1 && \
-    { dims=$(ffprobe -v error -select_streams v:0 -show_entries stream=width,height -of csv=p=0 "$WORK/css-270.mp4" 2>/dev/null)
-      chk "a --res 270p render comes out 480x270 (the page's own layout at half the pixels)" "$dims" "480,270"
-    } || bad "the --res 270p render failed"
   fi
 
   # render.sh end to end: the real engine (npx, its own download), the real film read back. The
@@ -689,8 +725,11 @@ else
   printf '\033[36m→\033[0m render.sh through the real engine (fps, workers, tier, the held card)\n'
   HFE2E="$WORK/hf-e2e"; cp -R "$ROOT/tools/kaggle/fixture/hf" "$HFE2E"; rm -rf "$HFE2E/renders" "$HFE2E/node_modules"
   cp "$TESTROOT/.kaggle/env.software.sh" "$TESTROOT/.kaggle/env.sh"
-  R_E2E_BUDGET=${OVH_TEST_RENDER_E2E_BUDGET:-600}
-  case "$R_E2E_BUDGET" in ''|*[!0-9]*) R_E2E_BUDGET=600 ;; esac
+  # 480 s: a healthy host finishes in 15-140 s; the first run also downloads the engine and its
+  # chrome-headless-shell, and the budget covers that too (the whole-group arithmetic is at the
+  # split's budget above). OVH_TEST_RENDER_E2E_BUDGET overrides it (seconds).
+  R_E2E_BUDGET=${OVH_TEST_RENDER_E2E_BUDGET:-480}
+  case "$R_E2E_BUDGET" in ''|*[!0-9]*) R_E2E_BUDGET=480 ;; esac
   R_LOG="$WORK/hf-e2e.log"; : > "$R_LOG"
   HF_BROWSER_ENV=""
   case "$CHROME_BIN" in *chrome-headless-shell*) HF_BROWSER_ENV="HYPERFRAMES_BROWSER_PATH=$CHROME_BIN" ;; esac

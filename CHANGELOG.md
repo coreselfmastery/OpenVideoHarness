@@ -2,6 +2,13 @@
 
 ## Unreleased
 
+**The bake section said "budget-bounded" and was not — run 39127448500's macOS job spent its last 31 minutes silent**
+
+- Why: the suite's own head comment promised every real-render section a budget, and two of the three had one (the split E2E, the engine E2E) — the bake/twins/`--res` trio had the comment and nothing below it. A Chrome that stops answering in that section hangs the whole kaggle group past the workflow's 40-minute ceiling with its output still in the capture buffer; ubuntu had already passed, so the run died cancelled with zero diagnostics.
+- `tools/kaggle/test.sh`: the whole Chrome trio — the bake, its second bake (the platform-reference check), the twins, the `--res` render — now runs under ONE budget (`OVH_TEST_BAKE_BUDGET`, default 240 s) in the established shape: background subshell, per-step rcs to a status file, TERM → grace → KILL, the drivers and a wedged browser (`vh-textcheck-` profiles, this section's Chrome is the only one alive there) taken down, and one honest skip line — the checks it replaced are all real-render checks; the `--res` guards stay stub-checked above. Over-budget is a skip, never a hang: a slow host is a fact about the host, not a verdict about the code.
+- The other two budgets were retuned so the worst case fits the ceiling with margin: split E2E 720 → 600 s (a healthy macOS runner draws it in ~340-380 s), engine E2E 600 → 480 s (healthy 15-140 s incl. the first-run download). All three tripped plus the killed-split's 90 s plus the stub sections ≈ 25 min, against ~31 min of the 40-minute job left after the ~9-minute film-tools group. The arithmetic is written at the split's budget comment.
+- Verified: `OVH_TEST_BAKE_BUDGET=1` trips at 4 s → one skip line, 135 checks, exit 0, no orphan processes; the full suite on the happy path: 140/140.
+
 **The macOS job of run 39123478825 found three real bugs in the part-3 checks — one namespace bug and one false cross-platform guarantee**
 
 - Why: the first CI run of part 3 (aa71b10) was cancelled at 25 minutes; the ceiling went to 40 (0f436b9) and the suite ran to the end on both OSes. Ubuntu passed 139/139; macOS failed 3 — and each failure was the checks asserting something that is not true, not the code being wrong.
