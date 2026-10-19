@@ -19,9 +19,6 @@ PASS=0; FAIL=0
 ok()  { PASS=$((PASS + 1)); printf '  \033[32m✓\033[0m %s\n' "$*"; }
 bad() { FAIL=$((FAIL + 1)); printf '  \033[31m✗\033[0m %s\n' "$*"; }
 
-# A 1x1 valid PNG (the stub writes it for every frame; --encode needs real PNGs).
-PNG_B64="iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAACXBIWXMAAAABAAAAAQBPJcTWAAAAEElEQVR4nGP4y8AARAwQCgAfrgP19hgqWQAAAABJRU5ErkJggg=="
-
 # --- the stub blender ------------------------------------------------------------------
 cat > "$TMP/bin/blender" <<'STUB'
 #!/usr/bin/env bash
@@ -93,7 +90,8 @@ if [ -f "$TMP/out-probe/half-1.log" ] && grep -q "CUDA_VISIBLE_DEVICES=1" "$TMP/
 echo "→ 3. --frames 100-109 explicit range"
 run_split explicit --frames 100-109 >/dev/null 2>&1
 [ "$(count_files "$TMP/out-explicit")" = 10 ] && ok "10 frames in the explicit range" || bad "expected 10, got $(count_files "$TMP/out-explicit")"
-ls "$TMP/out-explicit" | grep -q "f_0107.png" && ok "files pad to f_#### correctly" || bad "padding wrong"
+
+[ -f "$TMP/out-explicit/f_0107.png" ] && ok "files pad to f_#### correctly" || bad "padding wrong"
 
 echo "→ 4. --bias 2:1 arithmetic (GPU 0 takes floor(10*2/3)=6, GPU 1 the rest 4)"
 rm -rf "$TMP/out-bias"; run_split bias --frames 0-9 --bias 2:1 >/dev/null 2>&1
