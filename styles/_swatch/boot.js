@@ -2,7 +2,7 @@
 // scene.renderAt(t) on every HyperFrames seek. Scene authors never edit this file; see README.md.
 import * as lib from "./lib.js";
 
-const BUILTIN = new Set(["demo", "catalog", "fontprobe"]);           // scenes that live inside styles/_swatch/
+const BUILTIN = new Set(["demo", "catalog", "catalog-fx", "fontprobe"]);  // scenes that live inside styles/_swatch/
 const canvas = document.getElementById("c");
 const ctx = canvas.getContext("2d", { alpha: false, willReadFrequently: false });
 const vars = readVars();

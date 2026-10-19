@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en" data-composition-variables='[{"id":"style","type":"string","label":"Style slug: demo | catalog | fontprobe | a folder under styles/ (staged by render.sh)","default":"demo"},{"id":"hud","type":"boolean","label":"Draw a t / frame readout (draft checks only)","default":false}]'>
+<html lang="en" data-composition-variables='[{"id":"style","type":"string","label":"Style slug: demo | catalog | catalog-fx | fontprobe | a folder under styles/ (staged by render.sh)","default":"demo"},{"id":"hud","type":"boolean","label":"Draw a t / frame readout (draft checks only)","default":false}]'>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=1920, height=1080" />
@@ -27,6 +27,15 @@
       <filter id="ovh-rough" x="-10%" y="-10%" width="120%" height="120%" color-interpolation-filters="sRGB">
         <feTurbulence id="ovh-rough-turb" type="fractalNoise" baseFrequency="0.06" numOctaves="2" seed="1" result="n" />
         <feDisplacementMap id="ovh-rough-disp" in="SourceGraphic" in2="n" scale="6" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+      <!-- lib.duotone sets the three tableValues per call: luminance in, dark→light ramp out -->
+      <filter id="ovh-duotone" x="0%" y="0%" width="100%" height="100%" color-interpolation-filters="sRGB">
+        <feColorMatrix type="matrix" values="0.2126 0.7152 0.0722 0 0  0.2126 0.7152 0.0722 0 0  0.2126 0.7152 0.0722 0 0  0 0 0 1 0" result="g" />
+        <feComponentTransfer in="g">
+          <feFuncR id="ovh-duo-r" type="table" tableValues="0.063 1" />
+          <feFuncG id="ovh-duo-g" type="table" tableValues="0.114 1" />
+          <feFuncB id="ovh-duo-b" type="table" tableValues="0.259 1" />
+        </feComponentTransfer>
       </filter>
     </svg>
     <script>

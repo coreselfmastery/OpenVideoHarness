@@ -15,7 +15,8 @@ export const MOTIF = [
   { key: "draft", en: "Draft", zh: "初版" },
 ];
 
-function box(x0, y0, x1, y1) { return { x0, y0, x1, y1, x: x0, y: y0, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }; }
+/** A rectangle value object: { x0, y0, x1, y1, x, y, w, h, cx, cy } — the shape particles' `area` and marker()'s `box` take. */
+export function box(x0, y0, x1, y1) { return { x0, y0, x1, y1, x: x0, y: y0, w: x1 - x0, h: y1 - y0, cx: (x0 + x1) / 2, cy: (y0 + y1) / 2 }; }
 /** action: EBU R95 90 % graphics-safe (text ≥ 96 px from the sides, ≥ 54 px from top/bottom). title: 80 % title-safe. */
 export const SAFE = { action: box(96, 54, W - 96, H - 54), title: box(192, 108, W - 192, H - 108) };
 
@@ -205,6 +206,58 @@ export function luminance(hex) {
   return 0.2126 * l[0] + 0.7152 * l[1] + 0.0722 * l[2];
 }
 
+// ───────────────────────── creative pack: colour ─────────────────────────
+function hexToHsl(hex) {
+  const [r0, g0, b0] = rgb(hex).map((c) => c / 255);
+  const mx = Math.max(r0, g0, b0), mn = Math.min(r0, g0, b0), d = mx - mn;
+  let h = 0;
+  if (d > 0) {
+    if (mx === r0) h = ((g0 - b0) / d + (g0 < b0 ? 6 : 0)) / 6;
+    else if (mx === g0) h = ((b0 - r0) / d + 2) / 6;
+    else h = ((r0 - g0) / d + 4) / 6;
+  }
+  const l = (mx + mn) / 2, s = d === 0 ? 0 : d / (1 - Math.abs(2 * l - 1));
+  return [h, s, l];
+}
+function hslToHex(h, s, l) {
+  h = ((h % 1) + 1) % 1; s = clamp(s); l = clamp(l);
+  const f = (n) => { const k = (n + h * 12) % 12, a = s * Math.min(l, 1 - l); return l - a * Math.max(-1, Math.min(k - 3, 9 - k, 1)); };
+  return "#" + [f(0), f(8), f(4)].map((c) => Math.round(clamp(c) * 255).toString(16).padStart(2, "0")).join("");
+}
+/**
+ * Colour harmony from one seed colour: `count` colours in the same family — "analogous" (neighbours on the wheel),
+ * "complementary", "split", "triad", "tetrad", "mono" (one hue, lightness spread). Seeded jitter keeps steps from
+ * feeling mechanical; deterministic, so the palette from a draft is the palette in the delivery render.
+ */
+export function harmony(base, { scheme = "analogous", count = 5, jitter = 0.015, seed = 1 } = {}) {
+  const [h, s, l] = hexToHsl(base);
+  const offsets = {
+    analogous: [0, 1 / 12, -1 / 12, 1 / 6, -1 / 6, 1 / 4],
+    complementary: [0, 0.5, 0.08, 0.58, 0.25, 0.75],
+    split: [0, 0.42, 0.58, 0.21, 0.79, 0.5],
+    triad: [0, 1 / 3, 2 / 3, 1 / 6, 0.5, 5 / 6],
+    tetrad: [0, 0.25, 0.5, 0.75, 0.125, 0.625],
+    mono: [0],
+  }[scheme] || [0];
+  const out = [];
+  for (let i = 0; i < count; i++) {
+    const j = (hash(seed, i, scheme.length) - 0.5) * 2 * jitter;
+    if (scheme === "mono") out.push(hslToHex(h, s * (1 - 0.14 * (i % 3)), clamp(l + (i - (count - 1) / 2) * 0.14, 0.08, 0.94)));
+    else out.push(hslToHex(h + offsets[i % offsets.length] + j, s * (i % 2 ? 0.9 : 1), clamp(l + (i > 2 ? -0.06 * (i - 2) : 0.04 * i), 0.08, 0.94)));
+  }
+  return out;
+}
+/** Gradient lookup: ramp([[0, "#0a0e2a"], [0.55, "#5b2a86"], [1, "#ff9a3c"]], u) → interpolated hex. Stops need not start at 0 or end at 1. */
+export function ramp(stops, u) {
+  const S = [...stops].sort((a, b) => a[0] - b[0]);
+  const x = clamp(u);
+  if (x <= S[0][0]) return S[0][1];
+  for (let i = 1; i < S.length; i++) {
+    if (x <= S[i][0]) { const [p0, c0] = S[i - 1], [p1, c1] = S[i]; return mixColor(c0, c1, (x - p0) / Math.max(1e-9, p1 - p0)); }
+  }
+  return S[S.length - 1][1];
+}
+
 // ───────────────────────── fonts & text ─────────────────────────
 const GENERIC = new Set(["serif", "sans-serif", "monospace", "cursive", "fantasy", "system-ui"]);
 const ROLE_FALLBACK = {
@@ -384,6 +437,30 @@ export function typewriter(str, t, { start = 0, cps = 20 } = {}) {
   return gs.slice(0, Math.min(gs.length, n)).join("");
 }
 
+// ───────────────────────── creative pack: kinetic type ─────────────────────────
+/**
+ * Per-glyph choreography: the drawGlyphs style object for glyph i of n at time t. Modes: "rise" (spring up from
+ * below), "pop" (spring scale-in), "wave" (travelling sine, loops forever), "cascade" (tumble in with rotation),
+ * "jitter" (seeded boil, quantized to `rate` steps/s so it boils instead of vibrating). All pure functions of t;
+ * `w`/`zeta` are the spring's (see spring()).
+ */
+export function glyphAnim(i, n, t, { mode = "rise", start = 0, stagger = 0.05, dur = 0.55, seed = 1, rate = 8,
+  amp = 1, w = 13, zeta = 0.72 } = {}) {
+  const t0 = start + i * stagger, u = seg(t, t0, t0 + dur);
+  switch (mode) {
+    case "pop": return { alpha: clamp(u * 3), scale: spring(u * dur, { w, zeta }) };
+    case "wave": { const ph = t * 5 - i * 0.55; return { dy: -Math.sin(ph) * 14 * amp, alpha: 1 }; }
+    case "cascade": { const s = spring(u * dur, { w: w + 2, zeta }); return { alpha: clamp(u * 2.5), dy: -70 * amp * (1 - s), rot: (1 - s) * -0.6 * amp, scale: 0.6 + 0.4 * s }; }
+    case "jitter": { const k = step(t, rate); return { dx: hashS(seed, i, k) * 2.4 * amp, dy: hashS(seed, i, k + 101) * 2.4 * amp, alpha: 1 }; }
+    default: { const s = spring(u * dur, { w, zeta }); return { alpha: clamp(u * 3), dy: (1 - s) * 90 * amp }; }   // rise
+  }
+}
+/** A whole laid-out line under one choreography: set ctx.fillStyle first, then drawKinetic(ctx, lay, t, { mode: "rise", stagger: 0.04 }). */
+export function drawKinetic(ctx, lay, t, { mode = "rise", fill, ...opts } = {}) {
+  const n = lay.glyphs.length;
+  drawGlyphs(ctx, lay, (g, i) => { const s = glyphAnim(i, n, t, { mode, ...opts }); return fill ? { ...s, fill } : s; });
+}
+
 // ───────────────────────── layers (offscreen canvases) ─────────────────────────
 const _layers = new Map();
 /** A named full-size offscreen canvas, cleared and state-reset on every call. Names are global: prefix yours. */
@@ -538,6 +615,63 @@ export function rgbSplit(ctx, src, { r = [4, 0], g = [0, 0], b = [-4, 0] } = {})
   ctx.restore();
 }
 
+// ───────────────────────── creative pack: post effects ─────────────────────────
+/**
+ * Bloom/glow: src blurred at half resolution and screened back over the frame (only adds light). threshold 0..1 adds a
+ * brightness/contrast pre-pass so only highlights bloom (approximate — canvas filters, not per-pixel JS, so it stays
+ * fast); radius is the full-res blur diameter. Feed it the frame so far (or a src layer) before grain/vignette.
+ */
+export function glow(ctx, src, { radius = 26, strength = 0.7, threshold = 0 } = {}) {
+  if (strength <= 0) return;
+  const hw = Math.max(2, W >> 1), hh = Math.max(2, H >> 1);
+  const x = layer("__glow", hw, hh);
+  const th = clamp(threshold, 0, 0.9);
+  x.filter = th > 0 ? `brightness(${(1 / (1 - th)).toFixed(3)}) contrast(${(1 + th * 3).toFixed(2)}) blur(${Math.max(1, radius / 2)}px)` : `blur(${Math.max(1, radius / 2)}px)`;
+  x.drawImage(src, 0, 0, hw, hh);
+  x.filter = "none";
+  ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = clamp(strength);
+  ctx.imageSmoothingQuality = "high"; ctx.drawImage(x.canvas, 0, 0, W, H); ctx.restore();
+}
+/**
+ * Duotone: src luminance remapped onto a dark→light two-colour ramp through the SVG filter #ovh-duotone (the browser's
+ * filter pipeline — no per-pixel JS). amount < 1 blends the toned result over src.
+ */
+export function duotone(ctx, src, { dark = "#101d42", light = "#ffd9a0", amount = 1 } = {}) {
+  const d = rgb(dark), l = rgb(light);
+  const set = (id, a, b) => { const el = document.getElementById(id); if (el) el.setAttribute("tableValues", `${(a / 255).toFixed(4)} ${(b / 255).toFixed(4)}`); };
+  set("ovh-duo-r", d[0], l[0]); set("ovh-duo-g", d[1], l[1]); set("ovh-duo-b", d[2], l[2]);
+  const fx = layer("__duo"); fx.filter = "url(#ovh-duotone)"; fx.drawImage(src, 0, 0); fx.filter = "none";
+  ctx.save(); ctx.globalAlpha = clamp(amount); ctx.drawImage(fx.canvas, 0, 0); ctx.restore();
+}
+/**
+ * Analog light leak: a warm seeded glow drifts and flickers across the frame (screen blend — it only adds light, never
+ * darkens). Position and flicker are seeded noise of t, never the clock.
+ */
+export function lightLeak(ctx, t, { color: col = "#ff8a3c", seed = 3, amount = 0.45, scale = 1.35 } = {}) {
+  if (amount <= 0) return;
+  const flick = 0.6 + 0.4 * noise1(t * 2.6, seed + 11);
+  const cx = W * (0.5 + 0.45 * noise1(t * 0.33, seed)), cy = H * (0.4 + 0.3 * noise1(t * 0.21, seed + 5));
+  const r = Math.hypot(W, H) * 0.4 * scale, a = clamp(amount) * flick;
+  const g = ctx.createRadialGradient(cx, cy, 0, cx, cy, r);
+  g.addColorStop(0, rgba(col, 0.9 * a)); g.addColorStop(0.45, rgba(col, 0.32 * a)); g.addColorStop(1, rgba(col, 0));
+  ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.fillStyle = g; ctx.fillRect(0, 0, W, H); ctx.restore();
+}
+/**
+ * Shimmer sweep: a soft diagonal light band crosses the frame once every `period` seconds, phase-locked to t (pure,
+ * loops cleanly at the period). With src, the band relights only src's pixels (src's alpha masks the band); without
+ * src it is a plain band of light over the frame.
+ */
+export function shimmer(ctx, t, src, { period = 4, width: bw = 260, angle = 18, amount = 0.5, color: col = "#ffffff" } = {}) {
+  const a = angle * Math.PI / 180, px = Math.cos(a), py = -Math.sin(a);
+  const xc = -bw + fract(t / period) * (W + 2 * bw);
+  const band = layer("__shim");
+  const g = band.createLinearGradient(xc - bw * px, H / 2 - bw * py, xc + bw * px, H / 2 + bw * py);
+  g.addColorStop(0, rgba(col, 0)); g.addColorStop(0.5, rgba(col, clamp(amount))); g.addColorStop(1, rgba(col, 0));
+  band.fillStyle = g; band.fillRect(0, 0, W, H);
+  if (src) { band.globalCompositeOperation = "destination-in"; band.drawImage(src, 0, 0); }
+  ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.drawImage(band.canvas, 0, 0); ctx.restore();
+}
+
 // ───────────────────────── shapes ─────────────────────────
 /** Hand-drawn polyline: points get seeded wobble; pass seed: step(t, 8) to make it "boil" 8× per second. */
 export function wobblePath(ctx, pts, { amp = 2, seg: segLen = 18, seed = 1, close = false } = {}) {
@@ -560,6 +694,111 @@ export function strokePartial(ctx, pts, u) {
   let left = clamp(u) * tot; ctx.beginPath(); ctx.moveTo(pts[0][0], pts[0][1]);
   for (let i = 1; i < pts.length && left > 0; i++) { const f = Math.min(1, left / L[i - 1]); ctx.lineTo(lerp(pts[i - 1][0], pts[i][0], f), lerp(pts[i - 1][1], pts[i][1], f)); left -= L[i - 1]; }
   ctx.stroke();
+}
+
+// ───────────────────────── creative pack: particles ─────────────────────────
+/**
+ * Seeded particle field. Every particle's whole life — spawn, path, size, twinkle — is a pure function of t, so any
+ * frame renders alone and 1 worker draws the same bytes as 3 (determinism.sh). `area` is a lib.box() (SAFE.action by
+ * default); the field clips to it. modes:
+ *   drift   slow dust with a sine sway; positions wrap inside area, so it loops seamlessly
+ *   rise    embers: accelerate upward, fade in/out over each `life` s cycle (no seam — every cycle is identical)
+ *   fall    confetti: coloured rectangles (colors, or a seeded harmony of color), rotating and swaying as they fall
+ *   orbit   stardust ring around area's centre
+ *   stream  points flowing along dir, fading in at the start and out at the end of each pass
+ */
+export function particles(ctx, t, { mode = "drift", n = 90, seed = 7, area = SAFE.action, size = [1.5, 4], speed = 26,
+  life = 4, color: col = "#ffffff", colors, alpha = 0.65, dir = [0, -1], twinkle = 0.4, spread = 0.5, amp = 1 } = {}) {
+  const A = area.x0 !== undefined ? area : box(area.x, area.y, area.x + area.w, area.y + area.h);   // box() or {x,y,w,h}
+  const cs = colors || (mode === "fall" ? harmony(col, { count: 5, seed }) : [col]);
+  const P = cached(`parts:${mode}:${seed}:${n}:${cs.join("")}`, () => Array.from({ length: n }, (_, i) => ({
+    i, x0: A.x0 + hash(seed, i, 1) * A.w, y0: A.y0 + hash(seed, i, 2) * A.h,
+    s: lerp(size[0], size[1], hash(seed, i, 3)), ph: hash(seed, i, 4) * TAU, v: 0.4 + 1.2 * hash(seed, i, 5),
+    depth: hash(seed, i, 3), c: cs[i % cs.length],
+  })));
+  ctx.save();
+  ctx.beginPath(); ctx.rect(A.x0, A.y0, A.w, A.h); ctx.clip();
+  const L = Math.hypot(dir[0], dir[1]) || 1, dx = dir[0] / L, dy = dir[1] / L, px = -dy, py = dx;
+  for (const p of P) {
+    let x = p.x0, y = p.y0, a = alpha;
+    if (mode === "drift") {
+      x = A.x0 + fract((p.x0 - A.x0) / A.w + t * speed * 0.004 * p.v * dx) * A.w + Math.sin(t * 0.6 + p.ph) * 9 * amp;
+      y = A.y0 + fract((p.y0 - A.y0) / A.h + t * speed * 0.004 * p.v * dy) * A.h + Math.cos(t * 0.5 + p.ph) * 6 * amp;
+      x = clamp(x, A.x0, A.x1); y = clamp(y, A.y0, A.y1);
+    } else if (mode === "rise" || mode === "fall") {
+      const ph = fract(t / life + hash(seed, p.i, 9));
+      const u = mode === "rise" ? ph * ph * (3 - 2 * ph) : ph;                     // embers accelerate as they rise
+      y = mode === "rise" ? A.y1 + 20 - u * (A.h + 40) : A.y0 - 40 + u * (A.h + 80);
+      x = p.x0 + Math.sin(ph * 6 + p.ph) * 26 * spread * amp;
+      a = alpha * env(ph, 0, 1, 0.12, 0.22);
+    } else if (mode === "orbit") {
+      const ang = p.ph + t * speed / 300 * p.v + Math.sin(t * 0.5 + p.ph) * 0.1;
+      const rr = Math.min(A.w, A.h) * 0.36 * (0.55 + 0.45 * p.depth) + Math.sin(t * 0.8 + p.ph * 3) * 8;
+      x = A.cx + Math.cos(ang) * rr; y = A.cy + Math.sin(ang) * rr * 0.62;
+    } else {                                                                        // stream
+      const along = fract(t * speed / 400 * p.v + hash(seed, p.i, 7));
+      const off = (hash(seed, p.i, 6) - 0.5) * Math.min(A.w, A.h) * spread;
+      const travel = (along - 0.5) * Math.hypot(A.w, A.h) * 1.2;
+      x = A.cx + px * off + dx * travel; y = A.cy + py * off + dy * travel;
+      a = alpha * Math.sin(along * Math.PI);
+    }
+    if (twinkle > 0) a *= 1 - twinkle * (0.5 - 0.5 * Math.sin(t * (2 + p.depth * 3) + p.ph));
+    if (a <= 0.004) continue;
+    ctx.globalAlpha = clamp(a);
+    if (mode === "fall") {
+      ctx.save(); ctx.translate(x, y); ctx.rotate(p.ph + t * (1.2 + p.v) * (hash(seed, p.i, 8) < 0.5 ? 1 : -1));
+      ctx.fillStyle = p.c; ctx.fillRect(-p.s * 1.6, -p.s * 0.8, p.s * 3.2, p.s * 1.6);
+      ctx.restore();
+    } else {
+      ctx.fillStyle = p.c; ctx.beginPath(); ctx.arc(x, y, p.s, 0, TAU); ctx.fill();
+    }
+  }
+  ctx.restore();
+}
+
+// ───────────────────────── creative pack: text markers ─────────────────────────
+/**
+ * Emphasis marks for one line of text (or any box — build one from a layout with
+ * lib.box(lay.x0, lay.y - lay.ascent, lay.x1, lay.y + lay.descent)). mode: "highlight" (marker swipe behind the text —
+ * draw it BEFORE the glyphs), "underline" (draw-on with a hand wobble baked in), "circle" (hand ellipse that draws on
+ * and boils at 8 steps/s), "strike" (line through the middle), "brackets" (corner marks drawing on in rotation).
+ * start / draw time the animation; hold ≥ 0 fades it out `hold` s after it lands.
+ */
+export function marker(ctx, box, t, { mode = "highlight", color: col = "#ffd400", start = 0, draw: dw = 0.35, hold = -1,
+  seed = 4, width: lw = 9, inset = 8, alpha = 0.95, ease: e = ease.outCubic } = {}) {
+  const p = easeOf(e)(clamp((t - start) / Math.max(1e-6, dw)));
+  const out = hold >= 0 ? clamp(1 - (t - start - dw - hold) / 0.3) : 1;
+  if (p <= 0 || out <= 0) return;
+  const B = { x0: box.x0 - inset, y0: box.y0 - inset * 0.4, x1: box.x1 + inset, y1: box.y1 + inset * 0.6, w: box.w + 2 * inset, h: box.h + 1.6 * inset, cx: box.cx, cy: box.cy };
+  ctx.save(); ctx.globalAlpha = alpha * out; ctx.strokeStyle = col; ctx.fillStyle = col;
+  ctx.lineWidth = lw; ctx.lineCap = "round"; ctx.lineJoin = "round";
+  if (mode === "highlight") {
+    ctx.globalAlpha = alpha * out * 0.55;
+    ctx.beginPath(); ctx.roundRect(B.x0, B.y0, B.w * p, B.h, Math.min(10, B.h / 4)); ctx.fill();
+  } else if (mode === "underline") {
+    ctx.lineWidth = Math.max(3, lw * 0.8);
+    const y = B.y1;
+    strokePartial(ctx, [[B.x0, y], [lerp(B.x0, B.x1, 0.3), y + 2.5], [lerp(B.x0, B.x1, 0.65), y - 2], [B.x1, y + 1]], p);
+  } else if (mode === "circle") {
+    const boil = seed + step(t, 8) * 97, pts = [];
+    for (let k = 0; k <= 26; k++) {
+      const a = (k / 26) * TAU - Math.PI / 2;
+      pts.push([B.cx + Math.cos(a) * (B.w / 2 + 6) + hashS(boil, k) * 3, B.cy + Math.sin(a) * (B.h / 2 + 8) + hashS(boil, k + 50) * 3]);
+    }
+    ctx.lineWidth = Math.max(3, lw * 0.7);
+    strokePartial(ctx, pts, p * 1.02);                                            // overlap the start so the loop closes
+  } else if (mode === "strike") {
+    ctx.lineWidth = Math.max(3, lw * 0.7);
+    strokePartial(ctx, [[B.x0, box.cy], [B.x1, box.cy]], p);
+  } else {                                                                        // brackets
+    const L = Math.min(26, B.w * 0.22), k = clamp(p * 4);
+    const corner = (x, y, sx, sy, q) => {
+      if (k <= q) return; const u = clamp(k - q);
+      ctx.beginPath(); ctx.moveTo(x + sx * L * Math.min(1, u * 2), y); ctx.lineTo(x, y); ctx.lineTo(x, y + sy * L * clamp(u * 2 - 1, 0, 1)); ctx.stroke();
+    };
+    corner(B.x0, B.y0, 1, 1, 0); corner(B.x1, B.y0, -1, 1, 1); corner(B.x1, B.y1, -1, -1, 2); corner(B.x0, B.y1, 1, -1, 3);
+  }
+  ctx.restore();
 }
 
 // ───────────────────────── transitions ─────────────────────────
@@ -650,6 +889,72 @@ export function motionBlur(ctx, t, drawAt, { samples = 8, shutter = 0.5 } = {}) 
   ctx.save(); ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.drawImage(acc.canvas, 0, 0); ctx.restore();
 }
 
+// ───────────────────────── creative pack: transitions (2D) ─────────────────────────
+// Four more full-frame A→B moves in the same shape as cut/wipe/iris/whip — all seeded, all pure in u.
+
+/** Seeded block dissolve: cells of `cell` px flip from A to B in hash order (hard cells by design — the pixelly cut). */
+export function dissolve(ctx, u, drawA, drawB, { seed = 1, cell = 26, ease: e = ease.inOutCubic } = {}) {
+  const p = easeOf(e)(clamp(u));
+  if (p <= 0) return drawA(ctx);
+  if (p >= 1) return drawB(ctx);
+  drawA(ctx);
+  const B = layer("__diss_b"); drawB(B);
+  ctx.save();
+  ctx.beginPath();
+  for (let j = 0, ny = Math.ceil(H / cell); j < ny; j++)
+    for (let i = 0, nx = Math.ceil(W / cell); i < nx; i++)
+      if (hash(seed, i, j) < p) ctx.rect(i * cell, j * cell, cell, cell);
+  ctx.clip();
+  ctx.drawImage(B.canvas, 0, 0);
+  ctx.restore();
+}
+/** Push/slide: A leaves along dir while B enters from the opposite edge (dir [1,0] = content moves right). */
+export function push(ctx, u, drawA, drawB, { dir = [1, 0], ease: e = ease.inOutCubic } = {}) {
+  const p = easeOf(e)(clamp(u));
+  const Lh = Math.hypot(dir[0], dir[1]) || 1, nx = dir[0] / Lh, ny = dir[1] / Lh;
+  const D = Math.abs(nx) * W + Math.abs(ny) * H;
+  ctx.save(); ctx.translate(-nx * D * p, -ny * D * p); drawA(ctx); ctx.restore();
+  ctx.save(); ctx.translate(nx * D * (1 - p), ny * D * (1 - p)); drawB(ctx); ctx.restore();
+}
+/**
+ * Blinds: B appears in `bands` parallel strips at `angle` deg, band 0 leading and the rest staggered behind it
+ * (stagger 0 = in phase, 1 = strictly sequential). The strips clip B over A — no blur, no layers beyond one.
+ */
+export function blinds(ctx, u, drawA, drawB, { bands = 7, angle = 0, stagger = 0.5, ease: e = ease.inOutCubic } = {}) {
+  const p = easeOf(e)(clamp(u));
+  if (p <= 0) return drawA(ctx);
+  if (p >= 1) return drawB(ctx);
+  drawA(ctx);
+  const B = layer("__blinds_b"); drawB(B);
+  const a = angle * Math.PI / 180, R = Math.hypot(W, H) / 2 + 2, bw = 2 * R / bands;
+  ctx.save();
+  ctx.translate(W / 2, H / 2); ctx.rotate(a);
+  ctx.beginPath();
+  for (let i = 0; i < bands; i++) {
+    const pi = clamp(p * (1 + stagger) - (bands > 1 ? i / (bands - 1) : 0) * stagger, 0, 1);
+    if (pi > 0) ctx.rect(-R, -R + i * bw, 2 * R, pi * bw);
+  }
+  ctx.clip();
+  ctx.setTransform(1, 0, 0, 1, 0, 0);                                             // clip stays in device space; draw B unrotated
+  ctx.drawImage(B.canvas, 0, 0);
+  ctx.restore();
+}
+/**
+ * Dip-through: the first half scales A up toward `zoom` while fading, the second half lands B from `zoom`. The
+ * beat-cut move that never flashes — the frame passes through near-black instead of white.
+ */
+export function zoomDip(ctx, u, drawA, drawB, { zoom = 1.5, ease: e = ease.inOutCubic } = {}) {
+  const p = easeOf(e)(clamp(u));
+  if (p >= 1) return drawB(ctx);
+  const first = p < 0.5, q = first ? p / 0.5 : (p - 0.5) / 0.5;
+  const s = first ? 1 + (zoom - 1) * q : zoom - (zoom - 1) * q;
+  ctx.save();
+  ctx.translate(W / 2 * (1 - s), H / 2 * (1 - s)); ctx.scale(s, s);
+  ctx.globalAlpha = first ? 1 - q : q;
+  (first ? drawA : drawB)(ctx);
+  ctx.restore();
+}
+
 // ───────────────────────── optional WebGL ─────────────────────────
 const FRAG_HEAD = `#version 300 es
 precision highp float;
@@ -703,6 +1008,153 @@ export function shader(frag, { width = W, height = H } = {}) {
       }
       gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT); gl.drawArrays(gl.TRIANGLES, 0, 3);
       return canvas;
+    },
+  };
+}
+
+// ───────────────────────── creative pack: GLSL transitions ─────────────────────────
+// Full-frame per-pixel A→B transitions, driven by progress u (0→1) — the same family as wipe/iris/whip, but every
+// pixel decides for itself. They run on the offscreen WebGL2 canvas from shader() (u_tex0 = A, u_tex1 = B, already in
+// the shader header); the delivery renderer's software Chrome draws them with SwiftShader, which is deterministic —
+// the same bytes per run on the same machine (determinism.sh checks 1 worker against 3). Half-size FX canvases
+// upscale cleanly when a scene needs the speed: shaderTransition(name, { width: W / 2, height: H / 2 }).
+
+const GLSL_PRELUDE = `uniform float u;        // transition progress 0..1
+uniform float u_seed;     // seeded variation
+float th(vec2 p){ return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123); }
+float tn(vec2 p){ vec2 i = floor(p), f = fract(p); vec2 s = f * f * (3.0 - 2.0 * f);
+  return mix(mix(th(i), th(i + vec2(1.0, 0.0)), s.x), mix(th(i + vec2(0.0, 1.0)), th(i + vec2(1.0, 1.0)), s.x), s.y); }
+`;
+
+const GLSL_TRANSITIONS = {
+  // Noise-threshold dissolve with a glowing edge riding the burn front.
+  dissolve: `
+void main(){
+  vec2 p = v_uv * vec2(u_res.x / u_res.y, 1.0) * 6.0 + vec2(u_seed * 13.7, u_seed * 7.3);
+  float n = tn(p) * 0.62 + tn(p * 2.9 + 17.0) * 0.38;
+  float th0 = -0.08 + u * 1.16;
+  float m = 1.0 - smoothstep(th0 - 0.07, th0 + 0.07, n);
+  vec3 col = mix(texture(u_tex0, v_uv).rgb, texture(u_tex1, v_uv).rgb, m);
+  float edge = (1.0 - smoothstep(0.0, 0.09, abs(n - th0))) * step(0.001, u) * step(u, 0.999);
+  col += edge * 0.55 * vec3(1.0, 0.78, 0.42);
+  outColor = vec4(col, 1.0);
+}`,
+  // Digital glitch: per-band displacement + RGB split + scanline flutter, bands landing on B at their own thresholds.
+  glitch: `
+void main(){
+  float bands = 22.0;
+  float yb = floor(v_uv.y * bands);
+  float sq = floor(u * 9.0);
+  float g = tn(vec2(yb * 7.31 + u_seed * 3.0, sq));
+  float amt = smoothstep(0.0, 0.25, u) * (1.0 - smoothstep(0.75, 1.0, u));
+  float shift = (g - 0.5) * 0.3 * amt;
+  float m = step(g * 0.96 + 0.02, u);
+  vec2 uv = v_uv + vec2(shift, 0.0);
+  float ca = amt * 0.012;
+  vec3 col = mix(texture(u_tex0, uv).rgb, texture(u_tex1, uv).rgb, m);
+  col.r = mix(texture(u_tex0, uv + vec2(ca, 0.0)).r, texture(u_tex1, uv + vec2(ca, 0.0)).r, m);
+  col.b = mix(texture(u_tex0, uv - vec2(ca, 0.0)).b, texture(u_tex1, uv - vec2(ca, 0.0)).b, m);
+  float sl = 0.85 + 0.15 * th(vec2(v_uv.y * u_res.y * 0.7, sq));
+  col *= mix(1.0, sl, amt);
+  outColor = vec4(col, 1.0);
+}`,
+  // Dolly-through: both ends zoom the same way (A recedes, B arrives), radial smear + chromatic fringing mid-move.
+  zoomBlur: `
+void main(){
+  vec2 c = v_uv - 0.5;
+  float za = 1.0 + 0.5 * u;
+  float zb = 1.5 - 0.5 * u;
+  float m = smoothstep(0.3, 0.7, u);
+  float blur = 0.09 * (1.0 - abs(2.0 * u - 1.0));
+  vec3 acc = vec3(0.0);
+  for (int i = 0; i < 6; i++) {
+    float f = float(i) / 5.0;
+    vec3 a = texture(u_tex0, c / (za * (1.0 - blur * f)) + 0.5).rgb;
+    vec3 b = texture(u_tex1, c / (zb * (1.0 - blur * f)) + 0.5).rgb;
+    acc += mix(a, b, m);
+  }
+  vec3 col = acc / 6.0;
+  float ca = 0.006 * (1.0 - abs(2.0 * u - 1.0));
+  col.r = mix(texture(u_tex0, c / (za * (1.0 + ca)) + 0.5).r, texture(u_tex1, c / (zb * (1.0 + ca)) + 0.5).r, m);
+  col.b = mix(texture(u_tex0, c / (za * (1.0 - ca)) + 0.5).b, texture(u_tex1, c / (zb * (1.0 - ca)) + 0.5).b, m);
+  outColor = vec4(col, 1.0);
+}`,
+  // Kaleidoscope fold: B arrives through six mirrored sectors that rotate open over the move.
+  kaleido: `
+void main(){
+  vec2 c = v_uv - 0.5;
+  c.x *= u_res.x / u_res.y;
+  float r = length(c), a = atan(c.y, c.x);
+  float seg = 3.14159265 / 3.0;
+  float fold = abs(mod(a + u * 2.2 + u_seed, seg) - seg * 0.5) * 2.0 / seg;
+  float rb = mix(r, fold * r * 1.15 + 0.05, u);
+  float ab = mix(a, fold * 3.14159265 + u * 0.8, u);
+  vec2 uvb = vec2(cos(ab), sin(ab)) * rb;
+  uvb.x /= u_res.x / u_res.y;
+  vec3 col = mix(texture(u_tex0, v_uv).rgb, texture(u_tex1, uvb + 0.5).rgb, smoothstep(0.25, 0.75, u));
+  col *= 0.85 + 0.15 * sin(r * 40.0 - u * 6.0);
+  outColor = vec4(col, 1.0);
+}`,
+  // Shockwave: a refracting ring expands from the centre; B shows inside the front, with a bright rim.
+  shockwave: `
+void main(){
+  vec2 c = v_uv - 0.5;
+  c.x *= u_res.x / u_res.y;
+  float r = length(c);
+  float R = u * 1.3;
+  float d = (r - R) / 0.10;
+  float ring = exp(-d * d);
+  float inside = smoothstep(R - 0.10, R + 0.10, r);
+  vec2 dir = r > 0.0001 ? c / r : vec2(0.0);
+  vec2 uvB = clamp(v_uv - dir * ring * 0.05 * vec2(u_res.y / u_res.x, 1.0), vec2(0.0), vec2(1.0));
+  vec3 col = mix(texture(u_tex1, uvB).rgb, texture(u_tex0, v_uv).rgb, inside);
+  float glow = smoothstep(0.0, 0.15, u) * (1.0 - smoothstep(0.8, 1.0, u));
+  col += ring * (0.15 + 0.4 * glow) * vec3(1.0, 0.9, 0.7);
+  outColor = vec4(col, 1.0);
+}`,
+  // Analog light leak: a ragged warm front sweeps left→right, revealing B behind the light.
+  lightLeak: `
+void main(){
+  float rag = tn(vec2(v_uv.y * 24.0, u_seed + floor(u * 20.0))) * 0.05;
+  float front = u * 1.3 - 0.15 + rag;
+  float d = v_uv.x - front;
+  float m = smoothstep(0.06, -0.06, d);
+  vec3 col = mix(texture(u_tex0, v_uv).rgb, texture(u_tex1, v_uv).rgb, m);
+  float e = d / 0.10;
+  float band = exp(-e * e) * smoothstep(0.0, 0.1, u) * (1.0 - smoothstep(0.9, 1.0, u));
+  col += band * 0.85 * vec3(1.0, 0.62, 0.25) + band * band * 0.4 * vec3(1.0, 0.8, 0.5);
+  outColor = vec4(col, 1.0);
+}`,
+  // Warping morph: both scenes smear through a travelling noise warp that peaks mid-transition.
+  warpMorph: `
+void main(){
+  float k = sin(u * 3.14159265);
+  vec2 w = vec2(tn(v_uv * 5.0 + u_seed), tn(v_uv * 5.0 + 31.0 + u_seed)) - 0.5;
+  vec2 uv = v_uv + w * k * 0.18;
+  float m = smoothstep(0.1, 0.9, u + (tn(v_uv * 3.0 + 7.0) - 0.5) * 0.2);
+  vec3 col = mix(texture(u_tex0, uv).rgb, texture(u_tex1, uv).rgb, m);
+  col += (w.x + w.y) * k * 0.15;
+  outColor = vec4(col, 1.0);
+}`,
+};
+
+/** The ready-made GLSL transition names (lib.shaderTransition accepts any of these). */
+export const SHADER_TRANSITIONS = Object.keys(GLSL_TRANSITIONS);
+
+/**
+ * A named GLSL transition as a one-liner: const fx = lib.shaderTransition("dissolve"); then inside renderAt,
+ * ctx.drawImage(fx.render(u, canvasA, canvasB), 0, 0). u is the raw 0..1 progress (ease it yourself or let the scene
+ * tween it); canvasA/canvasB are full-frame sources (offscreen() is the usual way to make them). Compiles once and is
+ * cached per name+size. extra uniforms (u_seed, or a transition's own knobs) go in the third argument.
+ */
+export function shaderTransition(name, { width = W, height = H } = {}) {
+  const body = GLSL_TRANSITIONS[name];
+  if (!body) throw new Error(`shaderTransition: unknown '${name}' (have: ${SHADER_TRANSITIONS.join(", ")})`);
+  const fx = cached(`sTrans:${name}:${width}x${height}`, () => shader(GLSL_PRELUDE + body, { width, height }));
+  return {
+    render(u, texA, texB, extra = {}) {
+      const p = clamp(u);
+      return fx.render(p, { u: p, u_seed: 1, ...extra }, { u_tex0: texA, u_tex1: texB });
     },
   };
 }

@@ -174,6 +174,8 @@ cd ~/OpenVideoHarness && claude
 
 网页引擎有自己的速度层：[engines/remotion-speed.md](engines/remotion-speed.md)——HyperFrames/Remotion 渲染的四段流水线、两档口径（GPU 草稿：`--browser-gpu` 走 gl-egl 硬件光栅 + `--gpu` NVENC 硬编码；交付成片：逐字节确定的软件路径，一条不妥协）、长片分段捕获 + 断点续渲（实测：全渲 11.6 s 的片，续渲只补缺段 0.6 s 收工）、4 核 Kaggle 的 workers 数学、该量什么。一条命令：`tools/hf_speed.sh <项目> --tier draft|final|4k`。
 
+网页引擎还有创意层：[engines/hyperframes-creative.md](engines/hyperframes-creative.md)——4 种新 2D 转场、7 种 GLSL 像素级转场、bloom/双色/漏光/扫光、逐字编排、种子粒子（尘埃/余烬/彩纸/星尘/数据流）、文字标记和配色推导，每一件都是 t 的纯函数，`catalog-fx` 测试卡逐格验证、`determinism.sh` 逐字节验证（1 对 3 worker 150/150 帧相同，着色器转场在内）。一条命令：`tools/hf_creative.sh --fx|--palette|--blocks|--demo`。
+
 要写实人物或真实物理时，接生成式视频再用代码叠加（[playbook/05](playbook/05-hybrid-genvideo.md)）；讲有起伏的故事或 3 分钟以上的长片看 [playbook/09](playbook/09-narrative.md)；开头钩子、标题和封面看 [playbook/10](playbook/10-hooks-and-packaging.md)。
 
 **风格。** AI 做的视频很容易长成一个样子：暗底、发光、玻璃卡片。所以 [`styles/`](styles/) 收了 31 种从名作里提炼的风格：Saul Bass 的片头、瑞士网格、3Blue1Brown、《纽约时报》的数据图、《蜘蛛侠：平行宇宙》的网点、韦斯·安德森的对称构图、水墨、敦煌、皮影、国潮等。每种都写清颜色、字体、构图、运动、转场和声音，并用同一段内容实际渲染了一段 5 秒样片，差别只在风格：
