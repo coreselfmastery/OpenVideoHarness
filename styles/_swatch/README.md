@@ -12,6 +12,7 @@
 ```bash
 (cd styles/_swatch && npm ci)                    # 第一次：本地装 hyperframes@0.8.82（不装全局 skill）
 styles/_swatch/render.sh demo --draft            # 冒烟：内置 demo → styles/_swatch/out/demo/media/
+styles/_swatch/render.sh catalog-fx --draft       # 创意包测试卡：转场/特效/逐字/粒子/标记/配色各一格（改创意包后渲它看）
 styles/_swatch/render.sh <slug>                  # 正式：styles/<slug>/ → styles/<slug>/media/
 styles/_swatch/render.sh <slug> --draft --hud    # 自查用：角上烧 t / 帧号（不要交付）
 styles/_swatch/determinism.sh <slug>             # 确定性检验（1 个 worker 对 3 个 worker，逐帧比对）
@@ -39,6 +40,8 @@ styles/_swatch/
 ├── gallery.py         styles/gallery.jpg（+ 带声音的 gallery.mp4）
 ├── demo/              中性示例场景：按统一内容规格走一遍 API，复制它起步
 ├── catalog/           lib.js 测试卡：每个纹理、滤镜、转场、WebGL 各一格（改 lib.js 后渲它看）
+├── catalog-fx/        创意包测试卡：dissolve/push/blinds/zoomDip、七个 GLSL 转场、glow/duotone/lightLeak/shimmer、
+│                      逐字编排、粒子五模式、标记、harmony/ramp 各一格 + 三个着色器转场全屏（改创意包后渲它看）
 ├── fontprobe/         字体探针：在渲染用的 Chrome 里逐个加载 fonts.css 的字体，红色 = 打不开
 ├── package.json · package-lock.json · hyperframes.json · meta.json   （hyperframes 0.8.82 精确版本）
 └── out/               不入库：stage/、每个 slug 的中间文件（hf.mp4、render.log、sheet.png）

@@ -13,10 +13,11 @@
 
 | 需要什么 | HyperFrames（HTML + GSAP） | p5 / ClaudeAnimationBase | ManimGX | 通用 |
 |---|---|---|---|---|
-| 转场 | `npx hyperframes add <block>` 注册表里有着色器转场（例如 `flash-through-white`）；速度匹配的切法见 `references/repos/hyperframes/_upstream_claude/skills/cut-the-curve/` | `brushWipe`、`iris`、`irisShape`（见 ANIMATION_GUIDE） | `Transform`、`FadeTransform`、摄像机移动 | 跟着动作切、形状匹配切 |
-| 背景和氛围 | Three.js 或 canvas 层；`hyperframes-creative/references/audio-reactive.md` | 水彩 fill、纸纹、`glow()` | `NumberPlane`、渐变背景 | 颗粒、暗角（成片后处理，见下） |
-| 粒子、汇聚、流线场 | canvas 或 Three.js 自己写，用 `hash(i)` 定初始状态 | `hash` + `jit` | `VMobject` 点阵 | 思路参考 guizang 的 `assets/fx-lab/`（AGPL，只看思路不复用代码） |
-| 文字动效 | 逐词 stagger、`steps()` 打字、`clip-path` 揭示（数值见 03 篇） | `letter()`、`sfx()` | `Write`、`TransformMatchingTex` | — |
+| 转场 | canvas 片子：lib.js 的 `wipe/iris/whip/dissolve/push/blinds/zoomDip` + `shaderTransition`（GLSL 像素级，七种；`engines/hyperframes-creative.md`，一条命令 `tools/hf_creative.sh --fx`）；DOM 场景：`npx hyperframes add <block>` 注册表里有着色器转场（例如 `flash-through-white`）；速度匹配的切法见 `references/repos/hyperframes/_upstream_claude/skills/cut-the-curve/` | `brushWipe`、`iris`、`irisShape`（见 ANIMATION_GUIDE） | `Transform`、`FadeTransform`、摄像机移动 | 跟着动作切、形状匹配切 |
+| 背景和氛围 | canvas 片子：`lib.glow/duotone/lightLeak/shimmer`；Three.js 或 canvas 层；`hyperframes-creative/references/audio-reactive.md` | 水彩 fill、纸纹、`glow()` | `NumberPlane`、渐变背景 | 颗粒、暗角（成片后处理，见下） |
+| 粒子、汇聚、流线场 | canvas 片子：`lib.particles`（drift/rise/fall/orbit/stream，种子化、无缝循环）；自己写时用 `hash(i)` 定初始状态 | `hash` + `jit` | `VMobject` 点阵 | 思路参考 guizang 的 `assets/fx-lab/`（AGPL，只看思路不复用代码） |
+| 文字动效 | canvas 片子：`lib.drawKinetic`（rise/pop/wave/cascade/jitter 逐字编排）、`lib.scramble`、`lib.marker`（highlight/circle/underline 强调标记）；逐词 stagger、`steps()` 打字、`clip-path` 揭示（数值见 03 篇） | `letter()`、`sfx()` | `Write`、`TransformMatchingTex` | — |
+| 配色 | canvas 片子：`lib.harmony`（一色生一族）+ `lib.ramp`；命令行 `tools/hf_creative.sh --palette <hex> --scheme triad` | — | — | 色板写进 STYLE.md |
 | 数据图表动画 | `npx hyperframes add data-chart`；`hyperframes-creative/references/data-in-motion.md` | — | `Axes`、`BarChart` | `references/repos/data-animation-skills/` |
 | 角色动画 | — | Clawd 的 31 种情绪、转身、舞蹈（ANIMATION_GUIDE） | — | 生成视频打底 + 转描（`05-hybrid-genvideo.md`） |
 | 3D、着色器 | Three.js 层 + postprocessing | — | `ThreeDScene` | `references/repos/awesome-opus5-5-videos/` 的 3d 类作品和 prompt |

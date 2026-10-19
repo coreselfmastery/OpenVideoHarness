@@ -4,7 +4,7 @@
 #
 #   styles/_swatch/render.sh <slug> [--draft] [--fast] [--workers N] [--hud] [--png [--frames L]] [--stage-only] [--stamp] [--timeout S]
 #
-#   <slug>        a folder styles/<slug>/ with swatch.js + tokens.json, or a built-in: demo | catalog | fontprobe,
+#   <slug>        a folder styles/<slug>/ with swatch.js + tokens.json, or a built-in: demo | catalog | catalog-fx | fontprobe,
 #                 or a path containing "/" to a scene folder anywhere (slug = its basename; media/ goes inside it).
 #                 A folder with swatch.py instead of swatch.js is a Blender scene (README.md, "Blender 场景")
 #   --draft       HyperFrames --quality draft (faster, softer); outputs go to out/<slug>/media, never over styles/<slug>/media.
@@ -25,7 +25,7 @@
 #                 log stays silent for SWATCH_STALL seconds (default 120; Blender 300, as a cold Metal kernel compile
 #                 prints nothing for ~110 s) is treated as hung and killed too
 #
-# Built-in scenes (demo, catalog, fontprobe) write to styles/_swatch/out/<slug>/media/ instead of styles/<slug>/media/.
+# Built-in scenes (demo, catalog, catalog-fx, fontprobe) write to styles/_swatch/out/<slug>/media/ instead of styles/<slug>/media/.
 # HyperFrames runs with --no-browser-gpu (SwiftShader WebGL, 2D canvas and compositing on the CPU), its deterministic
 # mode: on the GPU, Chrome rasterised text edges differently from process to process (a few dozen pixels, one level),
 # x264 turned that into a different mp4 and poster on every run, and 1- and 2-worker renders took different capture
@@ -63,7 +63,7 @@ case "$slug" in */*) [ -d "$slug" ] || die "no such directory: $slug"; SRCDIR="$
 [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug must be lowercase letters, digits and dashes: $slug"
 command -v ffmpeg >/dev/null && command -v ffprobe >/dev/null || die "ffmpeg/ffprobe not found"
 
-builtin=0; [ -z "$SRCDIR" ] && case "$slug" in demo|catalog|fontprobe) builtin=1 ;; esac
+builtin=0; [ -z "$SRCDIR" ] && case "$slug" in demo|catalog|catalog-fx|fontprobe) builtin=1 ;; esac
 if [ $builtin = 1 ]; then SRC="$SW/$slug"; MEDIA="$SW/out/$slug/media"
 elif [ -n "$SRCDIR" ]; then SRC="$SRCDIR"; MEDIA="$SRC/media"        # a scene folder anywhere (drafts, tests)
 else SRC="$ROOT/styles/$slug"; MEDIA="$SRC/media"; fi
@@ -121,7 +121,7 @@ trap cleanup EXIT; trap 'exit 130' INT TERM
 if [ $engine = hf ]; then
 rm -rf "$STAGE"; mkdir -p "$STAGE"
 for f in index.html boot.js lib.js fonts.css hyperframes.json meta.json package.json; do cp "$SW/$f" "$STAGE/"; done
-for d in demo catalog fontprobe; do [ -d "$SW/$d" ] && cp -R "$SW/$d" "$STAGE/"; done
+for d in demo catalog catalog-fx fontprobe; do [ -d "$SW/$d" ] && cp -R "$SW/$d" "$STAGE/"; done
 [ -d "$SW/vendor" ] && cp -R "$SW/vendor" "$STAGE/"
 if [ $builtin = 0 ]; then
   mkdir -p "$STAGE/scenes"
