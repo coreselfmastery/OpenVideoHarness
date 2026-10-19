@@ -1583,12 +1583,23 @@ PY
   rm -rf "$t"
 }
 
+kaggle_checks() {   # tools/kaggle: the setup probes, the ffmpeg wrapper, the render policy, the split plan (all against stubs)
+  if [ "$(command -v node >/dev/null 2>&1 && node -v | sed 's/^v\([0-9]*\).*/\1/' || echo 0)" -lt 22 ]; then
+    skip "kaggle" "needs Node ≥ 22 on PATH (what HyperFrames pins)"; return 0
+  fi
+  local out rc
+  out=$(bash "$ROOT/tools/kaggle/test.sh" 2>&1); rc=$?
+  printf '%s\n' "$out" | sed 's/^/  /'
+  if [ $rc = 0 ]; then ok "kaggle: the setup probes, the tier wrapper, the render policy and the split plan (against stubs)"
+  else bad "kaggle checks: $rc failed (above)"; fi
+}
+
 case "${1:-all}" in
-  --smoke) smoke_checks; pace_checks; timeline_checks; decision_checks; gate_checks; desk_checks; textcheck_checks; film_checks ;;
+  --smoke) smoke_checks; pace_checks; timeline_checks; decision_checks; gate_checks; desk_checks; textcheck_checks; film_checks; kaggle_checks ;;
   --committed)   # exactly what a push would send: HEAD in a clean temporary checkout, uncommitted changes left out
     w="$(mktemp -d "${TMPDIR:-/tmp}/vh-ci.XXXXXX")/head"; git worktree add -q --detach "$w" HEAD || exit 2
     (cd "$w" && tools/ci.sh); rc=$?; git worktree remove --force "$w"; rmdir "$(dirname "$w")"; exit $rc ;;
-  all) static_checks; doc_checks; readpath_report; smoke_checks; pace_checks; timeline_checks; decision_checks; gate_checks; desk_checks; textcheck_checks; film_checks ;;
+  all) static_checks; doc_checks; readpath_report; smoke_checks; pace_checks; timeline_checks; decision_checks; gate_checks; desk_checks; textcheck_checks; film_checks; kaggle_checks ;;
   *) echo "usage: tools/ci.sh [--smoke | --committed]"; exit 2 ;;
 esac
 [ -n "$skipped" ] && printf '\033[33m! skipped, so not checked: %s\033[0m\n' "$skipped"   # said again at the end: a pass is not a pass of these
