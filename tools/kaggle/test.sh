@@ -500,6 +500,24 @@ OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --res 120p --browser none 2>&1)
 OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --res 270p --dpr 1 --browser none 2>&1); rc=$?
 [ "$rc" = 2 ] && echo "$OUT" | grep -q "not both" && ok "--res and --dpr together are refused" || bad "--res and --dpr were both accepted: [$OUT]"
 
+# ── render.mjs --tier / --gpus: the OpenHarness bridge policy (parse-level checks) ─────────────
+printf '\033→\033 render.mjs --tier / --gpus (the bridge policy)\n'
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier bogus --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "draft, review or final" && ok "an unknown --tier is refused" || bad "a bogus --tier was accepted: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --gpus 0 --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "cards . 1" && ok "--gpus 0 is refused (a whole number of cards >= 1)" || bad "--gpus 0 was accepted: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier draft --browser none -h 2>/dev/null; node "$ROOT/tools/film/render.mjs" --help 2>&1)
+echo "$OUT" | grep -q -- "--tier draft|review|final" && ok "the usage documents --tier" || bad "the usage does not document --tier"
+# draft names the 480p tier on a 540p page (dpr 0.888 >= the 0.25 floor), final leaves it alone
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier final --gpus 1 --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "could not start none" && ok "final is the master (no --res, no probe: it got all the way to the browser)" || bad "final tier changed the master's own settings: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier draft --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "could not start none" && ok "draft's 480p on a 540p page passed the res guards (died later at the browser, as designed)" || bad "draft's 480p tier was refused by the guards: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier draft --dpr 1 --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "could not start none" && ! echo "$OUT" | grep -q "not both" \
+  && ok "an explicit --dpr beats the tier's own --res (no conflict raised)" \
+  || bad "--tier draft with --dpr misbehaved: [$OUT]"
+
 # ── lambda.sh: the distributed road, driven against a stub engine and stub AWS tools ────────────
 printf '\033[36m→\033[0m lambda.sh (the project mapped onto the engine lambda commands, the refusals)\n'
 cp "$ROOT/tools/kaggle/lambda.sh" "$TESTROOT/tools/kaggle/"

@@ -5,7 +5,7 @@
 // nvenc for an NVIDIA card). The chunks are joined without re-encoding. Video only: put the sound on with bin/vh mux.
 //
 // usage: node tools/film/render.mjs <project | page.html> --browser <chrome> [--out out/film.mp4] [--fps 30]
-//          [--range a:b | --frames k0:k1] [--dpr 1] [--res 720p] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png]
+//          [--range a:b | --frames k0:k1] [--dpr 1] [--res 720p] [--tier draft|review|final] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png]
 //          [--quality 95] [--frame-timeout 120] [--force] [--real-clock] [--soft-gl] [--encoder x264|nvenc] [--gpu 0] [--gpus N]
 //        (bin/vh render finds the browser: CHROME_PATH, HyperFrames' chrome-headless-shell, then Chrome or Chromium)
 //
@@ -18,6 +18,11 @@
 //                  own layout: Chrome draws it at a fractional deviceScaleFactor, so a 480p or 720p draft of a
 //                  1080p film is the same picture at 20% / 44% of the pixels (a draft round drawn several times
 //                  faster); the master is still the full-size render. It sets --dpr, and the two conflict
+//   --tier t       the OpenHarness bridge: one word for the whole quality policy — draft = --res 480p and,
+//                  when an NVIDIA card answers, h264_nvenc p4 cq 28 (round-robin over the cards); review =
+//                  --res 720p, nvenc p5 cq 23; final = the master untouched: full size, x264, the determinism
+//                  contract. Each part stays overridable: an explicit --res/--dpr/--encoder/--crf/--preset
+//                  beats the tier for that part (no card / no NVENC build: the tier keeps x264, the crf rides)
 //   --gop 60       a keyframe every 60 frames exactly, from the span's first frame (default 2 s of frames); the chunks
 //                  are whole GOPs, so a later patch can cut the video on keyframes
 //   --png          lossless frames into the encoder (slower, larger pipes); default JPEG at --quality 95
@@ -54,6 +59,8 @@ if (!argv.length || argv.includes("-h") || argv.includes("--help")) { process.st
 const die = (msg) => { console.error("render: " + msg); process.exit(2); };
 const o = { fps: 30, dpr: 1, workers: 4, crf: 16, preset: "medium", quality: 95, frameTimeout: 120, encoder: "x264", gpu: 0 };
 let res = null, dprSet = false;
+const explicit = { res: false, dpr: false, encoder: false, crf: false, preset: false, gop: false };
+let tier = null;
 const NVENC_PRESETS = { ultrafast: "p1", superfast: "p1", veryfast: "p2", faster: "p3", fast: "p4", medium: "p4", slow: "p5", slower: "p6", veryslow: "p7", placebo: "p7" };
 let target = null, out = null, range = null, frames = null, gop = null, png = false, force = false;
 for (let i = 0; i < argv.length; i++) {
@@ -64,12 +71,12 @@ for (let i = 0; i < argv.length; i++) {
   else if (k === "--range") { range = val().split(":").map((v) => num(v, "--range", 0)); if (range.length !== 2 || range[1] <= range[0]) die("--range a:b, b > a"); }
   else if (k === "--frames") { frames = val().split(":").map((v) => num(v, "--frames", 0)); if (frames.length !== 2 || !frames.every(Number.isInteger) || frames[1] <= frames[0]) die("--frames k0:k1, whole frame numbers, k1 > k0"); }
   else if (k === "--fps") o.fps = num(val(), k, 1);
-  else if (k === "--dpr") { o.dpr = num(val(), k, 0.25); dprSet = true; }
-  else if (k === "--res") res = val();
+  else if (k === "--dpr") { o.dpr = num(val(), k, 0.25); dprSet = true; explicit.dpr = true; }
+  else if (k === "--res") { res = val(); explicit.res = true; }
   else if (k === "--workers") o.workers = Math.floor(num(val(), k, 1));
-  else if (k === "--crf") o.crf = num(val(), k, 0);
-  else if (k === "--preset") o.preset = val();
-  else if (k === "--gop") gop = Math.floor(num(val(), k, 1));
+  else if (k === "--crf") { o.crf = num(val(), k, 0); explicit.crf = true; }
+  else if (k === "--preset") { o.preset = val(); explicit.preset = true; }
+  else if (k === "--gop") { gop = Math.floor(num(val(), k, 1)); explicit.gop = true; }
   else if (k === "--quality") o.quality = Math.min(100, Math.floor(num(val(), k, 1)));
   else if (k === "--frame-timeout") o.frameTimeout = num(val(), k, 1);
   else if (k === "--png") png = true;
@@ -77,7 +84,8 @@ for (let i = 0; i < argv.length; i++) {
   else if (k === "--browser") o.browser = val();
   else if (k === "--real-clock") o.realClock = true;
   else if (k === "--soft-gl") o.softGl = true;
-  else if (k === "--encoder") { const v = val(); if (v !== "x264" && v !== "nvenc") die(`--encoder: x264 or nvenc, not ${JSON.stringify(v)}`); o.encoder = v; }
+  else if (k === "--tier") { const v = val(); if (v !== "draft" && v !== "review" && v !== "final") die(`--tier: draft, review or final, not ${JSON.stringify(v)}`); tier = v; }
+  else if (k === "--encoder") { const v = val(); if (v !== "x264" && v !== "nvenc") die(`--encoder: x264 or nvenc, not ${JSON.stringify(v)}`); o.encoder = v; explicit.encoder = true; }
   else if (k === "--gpu") { const x = Number(val()); if (!Number.isInteger(x) || x < 0) die(`--gpu: a whole device number ≥ 0, not ${JSON.stringify(val())}`); o.gpu = x; }
   else if (k === "--gpus") { const x = Number(val()); if (!Number.isInteger(x) || x < 1) die(`--gpus: a whole number of cards ≥ 1, not ${JSON.stringify(val())}`); o.gpus = x; }
   else if (k.startsWith("-")) die(`unknown option ${k} (-h for the options)`);
@@ -87,6 +95,13 @@ for (let i = 0; i < argv.length; i++) {
 if (!target) die("which project or page? (-h for the usage)");
 if (range && frames) die("--range or --frames, not both");
 if (res !== null && dprSet) die("--res or --dpr, not both (--res names the tier, --dpr the exact factor)");
+// --tier, the OpenHarness bridge: one word that picks the whole draft/review/final
+// policy (the same ladder tools/kaggle/render.sh uses for the HyperFrames path).
+// Every part stays overridable: an explicit --res/--dpr/--encoder/--crf/--preset
+// beats the tier's choice for that part. final IS the master: full size, x264,
+// the byte-determinism contract.
+if (tier === "draft" && res === null && !dprSet) res = "480p";
+if (tier === "review" && res === null && !dprSet) res = "720p";
 if (res !== null) {   // the tier: the short side of the video in lines, the page's own layout kept
   const m = String(res).match(/^(\d+)p?$/);
   if (!m) die(`--res: the short side in lines, like 480p, 720 or 1080p — not ${JSON.stringify(res)}`);
@@ -105,6 +120,20 @@ for (const tool of ["ffmpeg", "ffprobe"]) if (spawnSync(tool, ["-version"]).stat
 if (o.encoder === "nvenc") {
   const enc = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" });
   if (!/\bh264_nvenc\b/.test(enc.stdout || "")) die("this ffmpeg has no h264_nvenc compiled in: install a build with it (Ubuntu's apt ffmpeg has it) or render --encoder x264");
+}
+// The tier's draft/review encoders: NVENC when a card answers (a soft preference —
+// no card or no NVENC build and the tier stays on x264 with the same settings),
+// the same p4/cq28 and p5/cq23 ladder render.sh uses for the HyperFrames path.
+if ((tier === "draft" || tier === "review") && !explicit.encoder) {
+  const enc = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" });
+  const smi = spawnSync("nvidia-smi", ["-L"], { encoding: "utf8" });
+  if (/\bh264_nvenc\b/.test(enc.stdout || "") && smi.status === 0) {
+    o.encoder = "nvenc";
+    if (!explicit.preset) o.preset = tier === "draft" ? "p4" : "p5";
+    if (!explicit.crf) o.crf = tier === "draft" ? 28 : 23;
+  } else if (!explicit.crf) {
+    o.crf = tier === "draft" ? 28 : 23;   // the size ladder rides even on x264
+  }
 }
 // NVENC across BOTH cards: with --encoder nvenc, chunk worker w encodes on gpu
 // (o.gpu + w) % gpus. On a Kaggle 2xT4 that halves the encode wall and — more
@@ -264,7 +293,7 @@ const sidecar = {
     const dir = fs.realpathSync(path.dirname(outFile)), page = path.join(first.root, path.basename(first.page));
     return (dir + path.sep).startsWith(first.root + path.sep) ? path.relative(dir, page) : first.page;
   })(),
-  kind: first.kind, width: first.width, height: first.height, dpr: o.dpr, pixels: [st.width, st.height], fps, frames: n,
+  kind: first.kind, width: first.width, height: first.height, dpr: o.dpr, pixels: [st.width, st.height], fps, frames: n, tier,
   span: [+(k0 / fps).toFixed(6), +(k1 / fps).toFixed(6)], first_frame: k0, capture: png ? "png" : `jpeg q${o.quality}`,
   encoder: o.encoder === "nvenc"
     ? { codec: "h264_nvenc", crf: o.crf, preset: nvencPreset, gpu: o.gpu, gpus: nvencGpus, chunk_gpu: chunks.map((_, w) => workerGpu(w)), gop, keyint_min: gop, sc_threshold: 0, pix_fmt: st.pix_fmt, color: [st.color_range, st.color_space, st.color_primaries, st.color_transfer] }
