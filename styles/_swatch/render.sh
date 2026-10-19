@@ -2,13 +2,17 @@
 # render.sh — render one style swatch (5 s, 30 fps, 1920×1080 canvas) with the pinned HyperFrames, then
 # write styles/<slug>/media/swatch.mp4 (1280×720 H.264, ≤ 1.5 MB) and media/poster.jpg (t = 3.0 s, ≤ 200 KB).
 #
-#   styles/_swatch/render.sh <slug> [--draft] [--workers N] [--hud] [--png [--frames L]] [--stage-only] [--stamp] [--timeout S]
+#   styles/_swatch/render.sh <slug> [--draft] [--fast] [--workers N] [--hud] [--png [--frames L]] [--stage-only] [--stamp] [--timeout S]
 #
 #   <slug>        a folder styles/<slug>/ with swatch.js + tokens.json, or a built-in: demo | catalog | fontprobe,
 #                 or a path containing "/" to a scene folder anywhere (slug = its basename; media/ goes inside it).
 #                 A folder with swatch.py instead of swatch.js is a Blender scene (README.md, "Blender 场景")
 #   --draft       HyperFrames --quality draft (faster, softer); outputs go to out/<slug>/media, never over styles/<slug>/media.
 #                 Blender scenes: Cycles on the GPU with fewer samples instead of the CPU
+#   --fast        with --draft only (HyperFrames scenes): iterate on the GPU — --browser-gpu (Chrome gl-egl hardware
+#                 raster + drawElement fast capture where the GPU allows) and --gpu (NVENC where the ffmpeg build has
+#                 it, else libx264). NOT byte-deterministic (GPU text raster varies per process), so it never replaces
+#                 the --no-browser-gpu default above and determinism.sh keeps rendering the CPU path (engines/remotion-speed.md)
 #   --workers N   parallel Chrome workers (default 2; 1 when another `hyperframes render` is already running);
 #                 the count only changes the speed, the frames are byte-identical. Blender scenes: Blender processes
 #                 (default 1: Cycles already uses every core), each rendering one contiguous chunk of the frames
@@ -39,10 +43,10 @@ ok=$'\033[32m✓\033[0m'; no=$'\033[31m✗\033[0m'; wa=$'\033[33m!\033[0m'
 die() { echo "$no $*" >&2; exit 1; }
 fsize() { wc -c < "$1" | tr -d ' '; }         # bytes; `stat` flags differ between BSD and GNU
 
-slug=""; draft=0; workers=""; hud=false; png=0; stage_only=0; timeout=""; frames=""; stamp_only=0
+slug=""; draft=0; fast=0; workers=""; hud=false; png=0; stage_only=0; timeout=""; frames=""; stamp_only=0
 while [ $# -gt 0 ]; do
   case "$1" in
-    --draft) draft=1 ;; --hud) hud=true ;; --png) png=1 ;; --stage-only) stage_only=1 ;; --stamp) stamp_only=1 ;;
+    --draft) draft=1 ;; --fast) fast=1 ;; --hud) hud=true ;; --png) png=1 ;; --stage-only) stage_only=1 ;; --stamp) stamp_only=1 ;;
     --workers) workers=${2:?}; shift ;; --workers=*) workers=${1#*=} ;;
     --timeout) timeout=${2:?}; shift ;; --timeout=*) timeout=${1#*=} ;;
     --frames) frames=${2:?}; shift ;; --frames=*) frames=${1#*=} ;;
@@ -51,8 +55,9 @@ while [ $# -gt 0 ]; do
     *) [ -z "$slug" ] && slug=$1 || die "one slug at a time" ;;
   esac; shift
 done
-[ -n "$slug" ] || die "usage: styles/_swatch/render.sh <slug> [--draft] [--workers N] [--hud] [--png [--frames L]] [--stage-only] [--stamp] [--timeout S]"
+[ -n "$slug" ] || die "usage: styles/_swatch/render.sh <slug> [--draft] [--fast] [--workers N] [--hud] [--png [--frames L]] [--stage-only] [--stamp] [--timeout S]"
 [ -z "$workers" ] || [[ "$workers" =~ ^[1-9][0-9]*$ ]] || die "--workers takes a whole number ≥ 1, not '$workers'"
+[ $fast = 0 ] || { [ $draft = 1 ] || die "--fast goes with --draft (the shipped swatch path stays on the CPU: determinism)"; }
 SRCDIR=""
 case "$slug" in */*) [ -d "$slug" ] || die "no such directory: $slug"; SRCDIR="$(cd "$slug" && pwd)"; slug=$(basename "$SRCDIR") ;; esac
 [[ "$slug" =~ ^[a-z0-9][a-z0-9-]*$ ]] || die "slug must be lowercase letters, digits and dashes: $slug"
@@ -66,6 +71,7 @@ else SRC="$ROOT/styles/$slug"; MEDIA="$SRC/media"; fi
 [ $draft = 1 ] && [ $builtin = 0 ] && [ -z "$SRCDIR" ] && MEDIA="$SW/out/$slug/media"
 # the engine: swatch.js renders in HyperFrames (Chrome); a folder with only swatch.py is a Blender scene (Cycles)
 engine=hf; [ $builtin = 0 ] && [ ! -f "$SRC/swatch.js" ] && [ -f "$SRC/swatch.py" ] && engine=blender
+[ $fast = 0 ] || [ $engine = hf ] || die "--fast is for HyperFrames scenes (swatch.js): a Blender draft already renders on the GPU"
 [ -f "$SRC/tokens.json" ] || die "missing $SRC/tokens.json"
 python3 -c "import json,sys; json.load(open(sys.argv[1]))" "$SRC/tokens.json" 2>/dev/null || die "$SRC/tokens.json is not valid JSON"
 if [ $engine = hf ]; then
@@ -155,9 +161,12 @@ HFMP4="$OUT/hf.mp4"; LOG="$OUT/render.log"
 rm -f "$HFMP4" "$LOG"
 vars="{\"style\":\"$slug\",\"hud\":$hud}"
 
-hf_render() { # --no-browser-gpu: every frame is a pure function of t only when nothing in the pipeline depends on GPU state (header)
+hf_render() { # --no-browser-gpu: every frame is a pure function of t only when nothing in the pipeline depends on GPU state (header).
+  # --draft --fast swaps in the GPU path (--browser-gpu --gpu): iteration speed over byte-determinism, drafts only.
+  local gpu_flags=(--no-browser-gpu)
+  [ $fast = 1 ] && gpu_flags=(--browser-gpu --gpu)
   cd "$STAGE" && exec env HYPERFRAMES_SKIP_SKILLS=1 DO_NOT_TRACK=1 "$HF" render . --fps $FPS --workers "$workers" \
-    --no-browser-gpu --variables "$vars" "$@"
+    "${gpu_flags[@]}" --variables "$vars" "$@"
 }
 bl_render() { # $1 = frame folder, $2 = frame list ("0-149", "149,90,12"): the list cut into $workers contiguous chunks,
   # one fresh Blender per chunk, all at once (render.sh's --workers); each writes <folder>/frame_NNNN.png
