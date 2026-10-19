@@ -78,7 +78,10 @@ PROFILES = {
         "simplify": False, "persistent": False, "device": "cpu",
     },
 }
-ALIASES = {"previz": "turbo", "fast": "final", "cpu": "final-cpu", "deterministic": "final-cpu"}
+ALIASES = {"previz": "turbo", "review": "draft", "fast": "final", "cpu": "final-cpu", "deterministic": "final-cpu"}
+# "review" is OpenHarness's tier name (draft/review/final): a review-tier render
+# wants the fast-but-honest Cycles profile, which is draft here (docs: the bridge
+# section of engines/blender-perf.md; OpenHarness docs/VIDEO_HARNESS.md).
 
 # backend order for --device auto. CUDA before OptiX everywhere but macOS: on a T4
 # (Turing, no RT cores) OptiX falls back to a software BVH and loses its only advantage,
