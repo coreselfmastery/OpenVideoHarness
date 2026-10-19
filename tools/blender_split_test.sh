@@ -2,9 +2,9 @@
 # blender_split_test.sh — stub-verify tools/blender_split.sh without Blender or a GPU:
 #   the orchestration, the split math (equal weights, --bias, a 0 weight), the frame-range
 #   probe, --resume's missing-frame lists, the -s/-e/-a vs -f list choice, the failure
-#   path and the --encode step. A stub blender writes real tiny PNGs; a stub nvidia-smi
-#   lists two GPUs. Live pair-render on real cards is the Kaggle step (blender_split.sh
-#   header, "Verified").
+#   path, the --encode step, and the speed ladder (turbo profile, --scale, --upscale).
+#   A stub blender writes real tiny PNGs; a stub nvidia-smi lists two GPUs. Live
+#   pair-render on real cards is the Kaggle step (blender_split.sh header, "Verified").
 # usage: tools/blender_split_test.sh
 # Exit status: 0 all checks passed · 1 a check failed · 2 could not start.
 set -uo pipefail
@@ -141,6 +141,46 @@ if command -v ffprobe >/dev/null 2>&1; then
   [ "$FN" = 10 ] && ok "10 frames in the mp4" || bad "frames in mp4: $FN"
 else
   echo "  ! ffprobe not on PATH: encode content checks skipped"
+fi
+
+echo "→ 10. --profile turbo rides the launcher chain to both halves"
+run_split turbo --frames 0-9 --profile turbo >/dev/null 2>&1
+[ "$(count_files "$TMP/out-turbo")" = 10 ] && ok "turbo: 10 frames on disk" || bad "turbo: expected 10, got $(count_files "$TMP/out-turbo")"
+grep -q "\[perf\] profile turbo" "$TMP/out-turbo/half-0.log" && grep -q "\[perf\] profile turbo" "$TMP/out-turbo/half-1.log" \
+  && ok "both halves applied the turbo profile (blender_perf PROFILES.turbo)" || bad "turbo not applied: $(cat "$TMP/out-turbo/half-0.log" 2>/dev/null | head -3)"
+
+echo "→ 11. --scale 70 reaches both pinned commands (the resolution ladder)"
+DRYOUT="$(run_split scale --frames 0-9 --scale 70 --dry-run)"
+echo "$DRYOUT" | grep -q -- "--gpu 0 .*--scale 70" && echo "$DRYOUT" | grep -q -- "--gpu 1 .*--scale 70" \
+  && ok "--scale 70 forwarded to both halves" || bad "scale dry output: $DRYOUT"
+[ "$(echo "$DRYOUT" | grep -c -- '--scale 70')" = 2 ] && ok "exactly two --scale 70 tokens" || bad "scale token count: $(echo "$DRYOUT" | grep -c -- '--scale 70')"
+
+echo "→ 12. --scale validation: 0, 101 and 'abc' all refuse (exit 2)"
+run_split s0 --frames 0-9 --scale 0 >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "--scale 0 refused" || bad "--scale 0 rc=$rc (want 2)"
+run_split s101 --frames 0-9 --scale 101 >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "--scale 101 refused" || bad "--scale 101 rc=$rc (want 2)"
+run_split sabc --frames 0-9 --scale abc >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "--scale abc refused" || bad "--scale abc rc=$rc (want 2)"
+
+echo "→ 13. --upscale rides the encode as a lanczos pass (dry-run shows it)"
+DRYOUT="$(run_split ups --frames 0-9 --encode "$TMP/ups.mp4" --upscale 1080 --dry-run)"
+echo "$DRYOUT" | grep -q "scale=-2:1080:flags=lanczos" && ok "dry-run shows the lanczos upscale" || bad "upscale dry output: $DRYOUT"
+
+echo "→ 14. --upscale without --encode refuses (it is encode-time only)"
+run_split upnoenc --frames 0-9 --upscale 1080 >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "--upscale without --encode refused" || bad "--upscale alone rc=$rc (want 2)"
+
+echo "→ 15. --encode --upscale 1080 produces a 1080p film from the sequence"
+run_split enc2 --frames 0-9 --encode "$TMP/enc2.mp4" --upscale 1080 --fps 10 >/dev/null 2>&1
+[ -s "$TMP/enc2.mp4" ] && ok "upscaled mp4 written" || bad "no upscaled mp4"
+if command -v ffprobe >/dev/null 2>&1 && [ -s "$TMP/enc2.mp4" ]; then
+  FH="$(ffprobe -v error -select_streams v:0 -show_entries stream=height -of csv=p=0 "$TMP/enc2.mp4" 2>/dev/null)"
+  [ "$FH" = 1080 ] && ok "film height is 1080 (lanczos from the 2x2 stubs)" || bad "height: $FH"
+  FN="$(ffprobe -v error -select_streams v:0 -count_frames -show_entries stream=nb_read_frames -of csv=p=0 "$TMP/enc2.mp4" 2>/dev/null)"
+  [ "$FN" = 10 ] && ok "10 frames in the upscaled mp4" || bad "frames: $FN"
+else
+  echo "  ! ffprobe not on PATH: upscale content checks skipped"
 fi
 
 echo
