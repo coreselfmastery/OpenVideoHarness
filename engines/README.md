@@ -51,6 +51,8 @@ npx hyperframes render --quality draft --fps 30 --output out/draft.mp4
 npx hyperframes render --quality delivery --fps 30 --output out/final.mp4
 ```
 
+渲染有专门的速度层（GPU 草稿、NVENC 硬编码、长片分段 + 断点续渲、Kaggle 2×T4 的 GPU 分工）：[`remotion-speed.md`](remotion-speed.md)，一条命令 `tools/hf_speed.sh <项目> --tier draft|final|4k`；`styles/_swatch/render.sh --draft --fast` 是样式草稿的同款 GPU 档。
+
 用 `&` 或 `nohup` 把渲染放到后台、这条命令在渲染结束前就返回时（agent 常这样跑），在这一行加上 `HYPERFRAMES_RENDER_DETACHED=1`：
 
 ```bash
