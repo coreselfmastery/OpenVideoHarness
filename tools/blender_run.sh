@@ -2,8 +2,8 @@
 # Pin GPUs and apply a performance profile, then run Blender (engines/blender-perf.md).
 # The physical pin is CUDA_VISIBLE_DEVICES (the only mechanism that reaches the CUDA
 # driver before Blender starts); the in-process selection is tools/blender_perf.py.
-# usage: tools/blender_run.sh [--gpu N] [--device SPEC] [--profile P] [--simplify]
-#                              [--blender PATH] -- <blender args…>
+# usage: tools/blender_run.sh [--gpu N] [--device SPEC] [--profile P] [--scale N]
+#                              [--simplify] [--blender PATH] -- <blender args…>
 #   --gpu N       export CUDA_VISIBLE_DEVICES=N for this Blender only: the process
 #                 sees just that card (with --gpu 1, the physical GPU 1 appears at
 #                 in-process index 0). Default on Kaggle 2x T4 while ManimGX renders:
@@ -15,11 +15,15 @@
 #                 on Linux (the T4 doctrine; RT-core owners pass optix), Metal on
 #                 macOS. Mutually sensible with --gpu: prefer --gpu for the physical
 #                 pin and --device cpu to force CPU from a pinned process.
-#   --profile P   draft | final | final-cpu — inserted as a --python chain BEFORE
-#                 your args: the script runs before the -a/-f render action, so one
-#                 process applies the profile and renders with it (verified live).
-#                 For scripts that rebuild the scene from scratch (read_factory_
+#   --profile P   turbo | draft | final | final-cpu — inserted as a --python chain
+#                 BEFORE your args: the script runs before the -a/-f render action,
+#                 so one process applies the profile and renders with it (verified
+#                 live). For scripts that rebuild the scene from scratch (read_factory_
 #                 settings, like the swatch renderer), import the library instead.
+#   --scale N     render at N% of the scene resolution (1-100): the resolution
+#                 ladder — fewer pixels ≈ proportional speedup; pair with a lanczos
+#                 upscale at encode time (blender_split.sh --upscale H). Needs a
+#                 --profile (it rides the same --python chain).
 #   --simplify    force Simplify on: the VRAM emergency lever (16 GB on a T4).
 #   --blender     path to the blender binary (default: `command -v blender`).
 # Everything after `--` is passed to Blender verbatim, e.g.:
@@ -33,21 +37,22 @@ set -uo pipefail
 unset CDPATH
 cd "$(dirname "$0")/.." || exit 2   # repo root: the --python path is relative to it
 
-GPU=""; DEVICE=""; PROFILE=""; SIMPLIFY=""; BLENDER="${BLENDER:-}"
+GPU=""; DEVICE=""; PROFILE=""; SIMPLIFY=""; SCALE=""; BLENDER="${BLENDER:-}"
 while [ $# -gt 0 ]; do
   case "$1" in
     --gpu)     shift; GPU="${1:-}" ;;
     --device)  shift; DEVICE="${1:-}" ;;
     --profile) shift; PROFILE="${1:-}" ;;
+    --scale)   shift; SCALE="${1:-}" ;;
     --simplify) SIMPLIFY=1 ;;
     --blender) shift; BLENDER="${1:-}" ;;
     --) shift; break ;;
     *) printf '[!!] unknown flag: %s (everything after -- goes to Blender)\n' "$1" >&2
-       sed -n '2,25p' "$0" >&2; exit 2 ;;
+       sed -n '2,35p' "$0" >&2; exit 2 ;;
   esac
   shift
 done
-[ $# -gt 0 ] || { sed -n '2,25p' "$0" >&2; exit 2; }
+[ $# -gt 0 ] || { sed -n '2,35p' "$0" >&2; exit 2; }
 BLENDER="${BLENDER:-}"
 # Resolution order: an explicit --blender path, then `blender` on PATH, then the common
 # local installs. Bug fixed here (found live by blender_split's stub test): when `blender`
@@ -86,16 +91,24 @@ fi
 # Never use --profile with a script that parses its argv strictly (the swatch renderer
 # is the example: it imports the library instead).
 PERF_PRE=(); PERF_TAIL=()
+if [ -n "$SCALE" ]; then
+  case "$SCALE" in
+    ''|*[!0-9]*) printf '[!!] --scale takes 1-100 (a percentage), not %s\n' "$SCALE" >&2; exit 2 ;;
+  esac
+  [ "$SCALE" -ge 1 ] && [ "$SCALE" -le 100 ] || { printf '[!!] --scale takes 1-100, not %s\n' "$SCALE" >&2; exit 2; }
+  [ -n "$PROFILE" ] || { printf '[!!] --scale rides the profile chain; pass --profile too\n' >&2; exit 2; }
+fi
 if [ -n "$PROFILE" ]; then
   case "$PROFILE" in
-    draft|final|final-cpu|fast|cpu|deterministic) ;;
-    *) printf '[!!] --profile is draft | final | final-cpu, not %s\n' "$PROFILE" >&2; exit 2 ;;
+    turbo|previz|draft|final|final-cpu|fast|cpu|deterministic) ;;
+    *) printf '[!!] --profile is turbo | draft | final | final-cpu, not %s\n' "$PROFILE" >&2; exit 2 ;;
   esac
   PERF_PRE=(--python tools/blender_perf.py --python-exit-code 1)
   PERF_TAIL=(apply --profile "$PROFILE")
   [ -n "$DEVICE" ] && PERF_TAIL+=("--device" "$DEVICE")
+  [ -n "$SCALE" ] && PERF_TAIL+=("--scale" "$SCALE")
   [ -n "$SIMPLIFY" ] && PERF_TAIL+=(--simplify)
-  printf '[perf] profile %s%s%s\n' "$PROFILE" "${DEVICE:+ · device $DEVICE}" "${SIMPLIFY:+ · simplify}"
+  printf '[perf] profile %s%s%s%s\n' "$PROFILE" "${DEVICE:+ · device $DEVICE}" "${SCALE:+ · scale $SCALE%}" "${SIMPLIFY:+ · simplify}"
 fi
 
 has_dd=0

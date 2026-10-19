@@ -15,9 +15,9 @@
 #   for this tool, exactly like render-split.sh's determinism gate for web films.
 #
 # usage: tools/blender_split.sh <scene.blend> [--frames START-END] [--out DIR]
-#                              [--gpus N[,M…]] [--profile draft|final|final-cpu]
-#                              [--bias A:B…] [--resume] [--encode OUT.mp4] [--fps N]
-#                              [--nvenc] [--blender PATH] [--dry-run]
+#                              [--gpus N[,M…]] [--profile turbo|draft|final|final-cpu]
+#                              [--scale N] [--bias A:B…] [--resume] [--encode OUT.mp4]
+#                              [--upscale H] [--fps N] [--nvenc] [--blender PATH] [--dry-run]
 #   <scene.blend>    the scene to render (required).
 #   --frames S-E     frame range; default: the scene's own frame_start..frame_end, read
 #                    back with a 1-line bpy probe (adds one blender startup, ~2-5 s).
@@ -26,8 +26,12 @@
 #   --gpus N[,M…]    physical GPU indices to use (default: every GPU nvidia-smi lists;
 #                    with one GPU the tool runs ONE unpinned process — Cycles multi-GPU
 #                    is the fallback there, blender_run.sh's "no --gpu" mode).
-#   --profile P      Cycles profile chain: draft | final | final-cpu (default: final),
-#                    applied by tools/blender_run.sh before the render action.
+#   --profile P      Cycles profile chain: turbo | draft | final | final-cpu (default:
+#                    final), applied by tools/blender_run.sh before the render action.
+#                    turbo = 16spp/30s-cap previz and animation blocking.
+#   --scale N        render at N% of the scene resolution (1-100), the resolution
+#                    ladder: fewer pixels ≈ proportional speedup on both halves; pair
+#                    with --upscale so the MP4 comes back at full size (lanczos).
 #   --bias A:B…      work split between the GPUs, default 1:1 (equal). "2:1" gives the
 #                    first GPU two frames for every one of the second — for when one
 #                    card also rasterizes for Chrome (engines/README.md's GPU split
@@ -37,6 +41,9 @@
 #   --encode OUT.mp4 after the frames: ffmpeg the PNG sequence to an MP4 (libx264 CRF 18
 #                    slow — the repo's delivery doctrine; --nvenc switches to
 #                    h264_nvenc p7/cq 19, the Kaggle final tier from tools/kaggle/render.sh).
+#   --upscale H      with --encode: lanczos-upscale the film to height H (e.g. 1080) —
+#                    the second half of the --scale ladder (width follows the aspect,
+#                    rounded even). No effect on the frames on disk.
 #   --fps N          encode frame rate (default 30; ignored without --encode).
 #   --blender PATH   blender binary (passed through to blender_run.sh).
 #   --dry-run        print the commands, render nothing.
@@ -52,11 +59,11 @@ set -uo pipefail
 unset CDPATH
 cd "$(dirname "$0")/.." || exit 2   # repo root, same convention as blender_run.sh
 
-usage() { sed -n '4,45p' "$0"; }
+usage() { sed -n '4,49p' "$0"; }
 die() { printf '[!!] %s\n' "$*" >&2; exit 2; }
 say() { printf '[split] %s\n' "$*"; }
 
-SCENE=""; FRAMES=""; OUT=""; GPUS=""; PROFILE="final"; BIAS=""
+SCENE=""; FRAMES=""; OUT=""; GPUS=""; PROFILE="final"; BIAS=""; SCALE=""; UPSCALE=""
 RESUME=0; ENCODE=""; FPS=30; NVENC=0; BLENDER=""; DRY=0
 while [ $# -gt 0 ]; do
   case "$1" in
@@ -64,6 +71,8 @@ while [ $# -gt 0 ]; do
     --out)     shift; OUT="${1:-}" ;;
     --gpus)    shift; GPUS="${1:-}" ;;
     --profile) shift; PROFILE="${1:-}" ;;
+    --scale)   shift; SCALE="${1:-}" ;;
+    --upscale) shift; UPSCALE="${1:-}" ;;
     --bias)    shift; BIAS="${1:-}" ;;
     --resume)  RESUME=1 ;;
     --encode)  shift; ENCODE="${1:-}" ;;
@@ -78,8 +87,17 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$SCENE" ] || { usage >&2; exit 2; }
 [ -f "$SCENE" ] || die "scene not found: $SCENE"
-case "$PROFILE" in draft|final|final-cpu) ;; *) die "--profile is draft | final | final-cpu, not $PROFILE" ;; esac
+case "$PROFILE" in turbo|previz|draft|final|final-cpu) ;; *) die "--profile is turbo | draft | final | final-cpu, not $PROFILE" ;; esac
 case "$FPS" in ''|*[!0-9]*) die "--fps takes a number, not $FPS" ;; esac
+if [ -n "$SCALE" ]; then
+  case "$SCALE" in ''|*[!0-9]*) die "--scale takes 1-100 (a percentage), not $SCALE" ;; esac
+  [ "$SCALE" -ge 1 ] && [ "$SCALE" -le 100 ] || die "--scale takes 1-100, not $SCALE"
+fi
+if [ -n "$UPSCALE" ]; then
+  [ -n "$ENCODE" ] || die "--upscale needs --encode (it is an encode-time lanczos pass)"
+  case "$UPSCALE" in ''|*[!0-9]*) die "--upscale takes a height in pixels (e.g. 1080), not $UPSCALE" ;; esac
+  [ "$UPSCALE" -ge 144 ] && [ "$UPSCALE" -le 4320 ] || die "--upscale takes 144-4320, not $UPSCALE"
+fi
 
 # --- GPUs: the cards to split across ---------------------------------------------------
 if [ -n "$GPUS" ]; then
@@ -205,15 +223,16 @@ while [ "$g" -lt "$NGPU" ]; do
     g=$((g + 1)); continue
   fi
   GPUARG=(); [ -n "${GPU_LIST[$g]}" ] && GPUARG=(--gpu "${GPU_LIST[$g]}")
+  SCALEARG=(); [ -n "$SCALE" ] && SCALEARG=(--scale "$SCALE")
   NFRAMES="$(awk -F, '{print NF}' <<< "$LIST")"
   if [ "${GPU_CONTIG[$g]}" = 1 ]; then
     FS="${LIST%%,*}"; FE="${LIST##*,}"
     RUN=(tools/blender_run.sh ${GPUARG[@]+"${GPUARG[@]}"} --profile "$PROFILE"
-         ${BLENDER:+"--blender"} ${BLENDER:+"$BLENDER"} --
+         ${SCALEARG[@]+"${SCALEARG[@]}"} ${BLENDER:+"--blender"} ${BLENDER:+"$BLENDER"} --
          blender -b "$SCENE" -o "$PATTERN" -F PNG -s "$FS" -e "$FE" -a)
   else
     RUN=(tools/blender_run.sh ${GPUARG[@]+"${GPUARG[@]}"} --profile "$PROFILE"
-         ${BLENDER:+"--blender"} ${BLENDER:+"$BLENDER"} --
+         ${SCALEARG[@]+"${SCALEARG[@]}"} ${BLENDER:+"--blender"} ${BLENDER:+"$BLENDER"} --
          blender -b "$SCENE" -o "$PATTERN" -F PNG -f "$LIST")
   fi
   say "GPU ${GPU_LIST[$g]:-unpinned}: $NFRAMES frames"
@@ -226,7 +245,13 @@ while [ "$g" -lt "$NGPU" ]; do
   fi
   g=$((g + 1))
 done
-[ "$DRY" = 1 ] && { printf '[dry] nothing rendered\n'; exit 0; }
+[ "$DRY" = 1 ] && {
+  if [ -n "$ENCODE" ]; then
+    VF=""; [ -n "$UPSCALE" ] && VF="-vf scale=-2:$UPSCALE:flags=lanczos "
+    printf '[dry] encode: ffmpeg -framerate %s -i %s/f_%%04d.png %s<codec> %s\n' "$FPS" "$OUT" "$VF" "$ENCODE"
+  fi
+  printf '[dry] nothing rendered\n'; exit 0
+}
 
 # --- wait + verify ------------------------------------------------------------------------------
 FAILED=0
@@ -250,9 +275,10 @@ fi
 if [ -n "$ENCODE" ] && [ "$FAILED" = 0 ]; then
   ENC=(-c:v libx264 -preset slow -crf 18 -pix_fmt yuv420p)
   [ "$NVENC" = 1 ] && ENC=(-c:v h264_nvenc -preset p7 -cq 19 -pix_fmt yuv420p)
-  say "encoding $TOTAL frames → $ENCODE"
+  VF=(); [ -n "$UPSCALE" ] && VF=(-vf "scale=-2:$UPSCALE:flags=lanczos")
+  say "encoding $TOTAL frames → $ENCODE${UPSCALE:+ (lanczos upscale to ${UPSCALE}p)}"
   if ffmpeg -y -hide_banner -nostdin -loglevel error -framerate "$FPS" \
-       -i "$OUT/f_%04d.png" "${ENC[@]}" "$ENCODE"; then
+       -i "$OUT/f_%04d.png" ${VF[@]+"${VF[@]}"} "${ENC[@]}" "$ENCODE"; then
     say "encoded: $ENCODE"
   else
     say "encode failed"; FAILED=1

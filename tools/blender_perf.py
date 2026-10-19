@@ -27,9 +27,16 @@ process can apply a profile and render with it — verified live):
       check            apply, then read back EVERY setting and assert it landed
       report           print the effective settings of the current scene
 
-    --profile   draft | final | final-cpu      (draft 32spp/120s cap, final 128spp/600s
-                 cap + adaptive 0.02, final-cpu the determinism anchor: CPU, fixed
-                 128spp, no time limit, no persistent data)
+    --profile   turbo | draft | final | final-cpu      (turbo 16spp/30s cap — previz
+                 and animation blocking; draft 32spp/120s cap, final 128spp/600s cap +
+                 adaptive 0.02, final-cpu the determinism anchor: CPU, fixed 128spp, no
+                 time limit, no persistent data)
+    --scale N   render at N% of the scene's resolution (the same resolution_percentage
+                 the swatch renderer's --pct walks, 5.2.2-verified; 1-100). The frames
+                 come out smaller — pair with a lanczos upscale at encode time
+                 (tools/blender_split.sh --upscale H). Denoised low-res upscales well:
+                 the standard ladder is final at 70% + OIDN + lanczos ≈ 2× faster
+                 (measure it with blender_bench.sh before trusting a number here).
     --device    auto | cpu | cuda | optix | hip | oneapi | metal | cuda:N | gpu:N
                 auto = CUDA first on Linux (the T4 doctrine: no RT cores, OptiX has no
                 BVH advantage there; RT-core owners pass optix explicitly), Metal first
@@ -47,9 +54,14 @@ except ImportError:
     sys.exit("blender_perf runs inside Blender: blender -b <file> --python tools/blender_perf.py -- <subcommand> …")
 
 PROFILES = {
-    # the three contracts. Shared by all: bounce budget 6/3/3/4/2/4, indirect clamp 10,
+    # the four contracts. Shared by all: bounce budget 6/3/3/4/2/4, indirect clamp 10,
     # OIDN RGB+Albedo+Normal, CPU compositor, AgX; the differences are the determinism
     # trade-offs each one makes (engines/blender-perf.md, "哪个设置拿走了确定性").
+    "turbo": {
+        "samples": 16, "adaptive": True, "adaptive_threshold": 0.2, "adaptive_min_samples": 0,
+        "time_limit": 30.0, "prefilter": "ACCURATE", "denoise_quality": "HIGH",
+        "simplify": True, "persistent": True, "device": "auto",
+    },
     "draft": {
         "samples": 32, "adaptive": True, "adaptive_threshold": 0.1, "adaptive_min_samples": 0,
         "time_limit": 120.0, "prefilter": "ACCURATE", "denoise_quality": "HIGH",
@@ -66,7 +78,7 @@ PROFILES = {
         "simplify": False, "persistent": False, "device": "cpu",
     },
 }
-ALIASES = {"fast": "final", "cpu": "final-cpu", "deterministic": "final-cpu"}
+ALIASES = {"previz": "turbo", "fast": "final", "cpu": "final-cpu", "deterministic": "final-cpu"}
 
 # backend order for --device auto. CUDA before OptiX everywhere but macOS: on a T4
 # (Turing, no RT cores) OptiX falls back to a software BVH and loses its only advantage,
@@ -154,9 +166,11 @@ def _setp(rows, obj, prop, value):
         rows.append((f"{type(obj).__name__}.{prop}", value, f"REJECTED {e}", False))
 
 
-def apply_profile(scene, profile, device=None, simplify_override=None, rows=None):
+def apply_profile(scene, profile, device=None, simplify_override=None, rows=None, scale=None):
     """Apply one profile to the scene. Returns (device_report, rows); rows is the
-    same read-back table `check` prints, so library callers get the audit for free."""
+    same read-back table `check` prints, so library callers get the audit for free.
+    scale: 1-100 renders at that percentage of the scene's resolution (the frames
+    come out smaller; upscale at encode time — engines/blender-perf.md, "分辨率阶梯")."""
     name = ALIASES.get(profile, profile)
     if name not in PROFILES:
         raise KeyError(f"profile is one of {sorted(PROFILES)} (+ aliases {sorted(ALIASES)}), not {profile!r}")
@@ -210,7 +224,26 @@ def apply_profile(scene, profile, device=None, simplify_override=None, rows=None
     # 5. color management: view_transform BEFORE look (the look list depends on it)
     _setp(rows, vs, "view_transform", "AgX")
     _setp(rows, vs, "look", "AgX - Medium High Contrast")
+
+    # 6. the resolution ladder (optional): N% of the scene's own pixels
+    if scale is not None:
+        _setp(rows, r, "resolution_percentage", int(scale))
     return dev, rows
+
+
+def motion_blur_advisory(scene):
+    """Cost note when the scene renders with sample-based motion blur on.
+    Advisory only — never forced (the shutter is a creative choice); prints because
+    Cycles pays samples for it, and the comp-side alternatives are nearly free.
+    Property names are API-stable since 2.5x; getattr guards keep it crash-safe on
+    any build."""
+    r = scene.render
+    if not getattr(r, "use_motion_blur", False):
+        return None
+    shutter = getattr(r, "motion_blur_shutter", None)
+    return (f"motion blur is ON (shutter {shutter}) — Cycles traces extra samples for it; "
+            f"if the shot only needs a smear, a compositor vector blur or a shorter "
+            f"shutter is nearly free (engines/blender-perf.md, '运动模糊')")
 
 
 def _pbr_advisory(scene):
@@ -239,6 +272,8 @@ def report(scene):
         "persistent": r.use_persistent_data, "simplify": r.use_simplify,
         "compositor": (r.compositor_device, getattr(r, "compositor_denoise_device", "n/a")),
         "color": (vs.view_transform, vs.look), "seed": (cy.seed, cy.use_animated_seed),
+        "scale_pct": r.resolution_percentage,
+        "motion_blur": (getattr(r, "use_motion_blur", "n/a"), getattr(r, "motion_blur_shutter", "n/a")),
     }
     return keys
 
@@ -247,7 +282,7 @@ def _parse_argv():
     """Lenient: sys.argv after `--` is shared with Blender's own Cycles options
     (--cycles-device …), so unknown tokens are ignored, never fatal."""
     a = sys.argv[sys.argv.index("--") + 1:] if "--" in sys.argv else []
-    o = {"cmd": None, "profile": None, "device": None, "simplify": None, "save": False}
+    o = {"cmd": None, "profile": None, "device": None, "simplify": None, "save": False, "scale": None}
     i = 0
     while i < len(a):
         t = a[i]
@@ -257,6 +292,8 @@ def _parse_argv():
             o["profile"] = a[i + 1]; i += 1
         elif t in ("--device", "-d") and i + 1 < len(a):
             o["device"] = a[i + 1]; i += 1
+        elif t == "--scale" and i + 1 < len(a):   # no short form: -s is Blender's frame start in this shared region
+            o["scale"] = a[i + 1]; i += 1
         elif t == "--simplify":
             o["simplify"] = True
         elif t == "--save":
@@ -280,8 +317,14 @@ def main():
         return 0
     if o["cmd"] in ("apply", "check"):
         if not o["profile"]:
-            print("apply/check need --profile draft|final|final-cpu"); return 2
-        dev, rows = apply_profile(sc, o["profile"], device=o["device"], simplify_override=o["simplify"])
+            print("apply/check need --profile turbo|draft|final|final-cpu"); return 2
+        scale = None
+        if o["scale"] is not None:
+            if not o["scale"].isdigit() or not 1 <= int(o["scale"]) <= 100:
+                print(f"--scale takes 1-100 (a percentage), not {o['scale']!r}"); return 2
+            scale = int(o["scale"])
+        dev, rows = apply_profile(sc, o["profile"], device=o["device"],
+                                  simplify_override=o["simplify"], scale=scale)
         bad = 0
         for key, want, got, okk in rows:
             mark = "ok " if okk else "FAIL"
@@ -292,6 +335,9 @@ def main():
         unpbr = _pbr_advisory(sc)
         if unpbr:
             print(f"advisory: {len(unpbr)} material(s) without a Principled BSDF (anti-blockout rule, AGENTS.md): {unpbr[:5]}")
+        mb = motion_blur_advisory(sc)
+        if mb:
+            print(f"advisory: {mb}")
         if o["cmd"] == "check":
             print(f"check: {len(rows) - bad}/{len(rows)} settings landed" + ("" if bad else " — profile verified") + (f"; {bad} FAILED" if bad else ""))
             if bad:
