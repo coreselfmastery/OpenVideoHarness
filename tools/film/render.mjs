@@ -6,7 +6,7 @@
 //
 // usage: node tools/film/render.mjs <project | page.html> --browser <chrome> [--out out/film.mp4] [--fps 30]
 //          [--range a:b | --frames k0:k1] [--dpr 1] [--res 720p] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png]
-//          [--quality 95] [--frame-timeout 120] [--force] [--real-clock] [--soft-gl] [--encoder x264|nvenc] [--gpu 0]
+//          [--quality 95] [--frame-timeout 120] [--force] [--real-clock] [--soft-gl] [--encoder x264|nvenc] [--gpu 0] [--gpus N]
 //        (bin/vh render finds the browser: CHROME_PATH, HyperFrames' chrome-headless-shell, then Chrome or Chromium)
 //
 //   --out          default <project>/out/<page>.mp4; a lock file beside it stops a second render of the same file
@@ -29,6 +29,9 @@
 //   --gpu N        with --encoder nvenc only: ffmpeg's own -gpu pin, which card encodes (tools/kaggle/render-split.sh
 //                  gives each half of a film its own card; a card that also draws for Chrome costs the encode little,
 //                  NVENC is its own block on the chip)
+//   --gpus N       with --encoder nvenc only: spread the chunk encoders round-robin over N cards — worker w encodes
+//                  on (gpu + w) % N. Default: every card nvidia-smi lists (both T4s on Kaggle: half the encode wall,
+//                  and the encoders stop queueing behind gpu 0's browsers). --gpus 1 pins every chunk to --gpu
 //
 // The colour: Chrome's frames are full-range RGB; the encode converts them to limited-range BT.709 with all four colour
 // tags (what bin/vh check expects). Beside the video, <out>.render.json records how it was made (size, fps, frames,
@@ -76,6 +79,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (k === "--soft-gl") o.softGl = true;
   else if (k === "--encoder") { const v = val(); if (v !== "x264" && v !== "nvenc") die(`--encoder: x264 or nvenc, not ${JSON.stringify(v)}`); o.encoder = v; }
   else if (k === "--gpu") { const x = Number(val()); if (!Number.isInteger(x) || x < 0) die(`--gpu: a whole device number ≥ 0, not ${JSON.stringify(val())}`); o.gpu = x; }
+  else if (k === "--gpus") { const x = Number(val()); if (!Number.isInteger(x) || x < 1) die(`--gpus: a whole number of cards ≥ 1, not ${JSON.stringify(val())}`); o.gpus = x; }
   else if (k.startsWith("-")) die(`unknown option ${k} (-h for the options)`);
   else if (target) die(`one project or page, got ${target} and ${a}`);
   else target = a;
@@ -102,7 +106,22 @@ if (o.encoder === "nvenc") {
   const enc = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" });
   if (!/\bh264_nvenc\b/.test(enc.stdout || "")) die("this ffmpeg has no h264_nvenc compiled in: install a build with it (Ubuntu's apt ffmpeg has it) or render --encoder x264");
 }
+// NVENC across BOTH cards: with --encoder nvenc, chunk worker w encodes on gpu
+// (o.gpu + w) % gpus. On a Kaggle 2xT4 that halves the encode wall and — more
+// important — stops every encoder queueing behind the browsers on gpu 0. One
+// card (or no nvidia-smi): worker w encodes on o.gpu exactly as before, so
+// single-GPU behavior is byte-identical.
+let nvencGpus = 1;
+if (o.encoder === "nvenc") {
+  if (o.gpus != null) nvencGpus = o.gpus;
+  else {
+    const smi = spawnSync("nvidia-smi", ["-L"], { encoding: "utf8" });
+    nvencGpus = smi.status === 0 ? Math.max(1, (smi.stdout || "").split("\n").filter((l) => /GPU \d+:/i.test(l)).length) : 1;
+  }
+  if (nvencGpus < 1 || !Number.isInteger(nvencGpus)) die(`--gpus: a whole number of cards >= 1, not ${JSON.stringify(nvencGpus)}`);
+}
 const nvencPreset = /^p[1-7]$/.test(o.preset) ? o.preset : NVENC_PRESETS[o.preset] || "p4";
+const workerGpu = (w) => (o.gpu + w) % nvencGpus;
 
 const rel = (f) => { const r = path.relative(process.cwd(), f); return r && !r.startsWith("..") ? r : f; };
 let first;
@@ -168,7 +187,7 @@ const EVEN = "crop=trunc(iw/2)*2:trunc(ih/2)*2", px = [Math.round(first.width * 
 const vf = png ? `${EVEN},scale=out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p,setparams=${COLOR}`
   : `${EVEN},scale=in_color_matrix=bt601:in_range=pc:out_color_matrix=bt709:out_range=tv:flags=accurate_rnd+full_chroma_int,format=yuv420p,setparams=${COLOR}`;
 console.log(`render: ${rel(first.page)} · ${first.kind === "film" ? "window.film" : first.kind} · ${first.width}x${first.height}${o.dpr !== 1 ? ` @${o.dpr}x` : ""} · ` +
-  `${n} frames at ${fps} fps (${(k0 / fps).toFixed(3)}–${(k1 / fps).toFixed(3)} s) · ${chunks.length} worker${chunks.length > 1 ? "s" : ""} · ${png ? "PNG" : `JPEG q${o.quality}`} → ${o.encoder === "nvenc" ? `h264_nvenc ${nvencPreset} cq ${o.crf} (gpu ${o.gpu})` : `x264 crf ${o.crf} ${o.preset}`}, keyframe every ${gop} · ${first.version}`);
+  `${n} frames at ${fps} fps (${(k0 / fps).toFixed(3)}–${(k1 / fps).toFixed(3)} s) · ${chunks.length} worker${chunks.length > 1 ? "s" : ""} · ${png ? "PNG" : `JPEG q${o.quality}`} → ${o.encoder === "nvenc" ? `h264_nvenc ${nvencPreset} cq ${o.crf}${nvencGpus > 1 ? ` on gpus ${Array.from(new Set(chunks.map((_, w) => workerGpu(w)))).sort().join("/")} round-robin` : ` (gpu ${o.gpu})`}` : `x264 crf ${o.crf} ${o.preset}`}, keyframe every ${gop} · ${first.version}`);
 for (const p of first.loadProblems) console.log(`  while loading: ${p}`);
 if (px[0] % 2 || px[1] % 2) console.log(`  note: ${px[0]}x${px[1]} pixels; x264 needs even sizes, so the video is ${px[0] - px[0] % 2}x${px[1] - px[1] % 2}`);
 
@@ -184,7 +203,7 @@ async function worker(w, [a, b]) {
   const file = path.join(parts, `part${String(w).padStart(3, "0")}.mp4`);
   const ff = spawn("ffmpeg", ["-v", "error", "-y", "-f", "image2pipe", "-framerate", String(fps), "-c:v", png ? "png" : "mjpeg", "-i", "-",
     "-vf", vf, ...o.encoder === "nvenc"
-      ? ["-c:v", "h264_nvenc", "-preset", nvencPreset, "-cq", String(o.crf), "-gpu", String(o.gpu), "-bf", "0",
+      ? ["-c:v", "h264_nvenc", "-preset", nvencPreset, "-cq", String(o.crf), "-gpu", String(workerGpu(w)), "-bf", "0",
          "-g", String(gop), "-keyint_min", String(gop), "-sc_threshold", "0", "-force_key_frames", `expr:eq(mod(n,${gop}),0)`]
       : ["-c:v", "libx264", "-preset", o.preset, "-crf", String(o.crf), "-g", String(gop), "-keyint_min", String(gop), "-sc_threshold", "0"],
     "-color_range", "tv", "-colorspace", "bt709", "-color_primaries", "bt709", "-color_trc", "bt709", "-r", String(fps), file], { stdio: ["pipe", "ignore", "pipe"] });
@@ -248,7 +267,7 @@ const sidecar = {
   kind: first.kind, width: first.width, height: first.height, dpr: o.dpr, pixels: [st.width, st.height], fps, frames: n,
   span: [+(k0 / fps).toFixed(6), +(k1 / fps).toFixed(6)], first_frame: k0, capture: png ? "png" : `jpeg q${o.quality}`,
   encoder: o.encoder === "nvenc"
-    ? { codec: "h264_nvenc", crf: o.crf, preset: nvencPreset, gpu: o.gpu, gop, keyint_min: gop, sc_threshold: 0, pix_fmt: st.pix_fmt, color: [st.color_range, st.color_space, st.color_primaries, st.color_transfer] }
+    ? { codec: "h264_nvenc", crf: o.crf, preset: nvencPreset, gpu: o.gpu, gpus: nvencGpus, chunk_gpu: chunks.map((_, w) => workerGpu(w)), gop, keyint_min: gop, sc_threshold: 0, pix_fmt: st.pix_fmt, color: [st.color_range, st.color_space, st.color_primaries, st.color_transfer] }
     : { codec: "libx264", crf: o.crf, preset: o.preset, gop, keyint_min: gop, sc_threshold: 0, pix_fmt: st.pix_fmt, color: [st.color_range, st.color_space, st.color_primaries, st.color_transfer] },
   chunks: chunks.map(([a, b]) => [a, b]), browser: first.version, real_clock: !!o.realClock, soft_gl: !!o.softGl, seconds: +secs.toFixed(1),
 };
