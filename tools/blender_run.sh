@@ -48,11 +48,19 @@ while [ $# -gt 0 ]; do
   shift
 done
 [ $# -gt 0 ] || { sed -n '2,25p' "$0" >&2; exit 2; }
-command -v "${BLENDER:-blender}" >/dev/null 2>&1 || { BLENDER=${BLENDER:-blender}
+BLENDER="${BLENDER:-}"
+# Resolution order: an explicit --blender path, then `blender` on PATH, then the common
+# local installs. Bug fixed here (found live by blender_split's stub test): when `blender`
+# WAS on PATH the old guard's || block never ran, so BLENDER stayed EMPTY — the exec below
+# then died with "env: '': No such file or directory" on any machine where PATH resolution
+# was the success path (exactly Kaggle's case). The empty-variable case is now closed.
+if ! command -v "${BLENDER:-blender}" >/dev/null 2>&1; then
   for c in ./blender ../blender /usr/local/bin/blender "$HOME/blender-5.2.2-linux-x64/blender"; do
     command -v "$c" >/dev/null 2>&1 && BLENDER="$c" && break
-  done; }
-command -v "${BLENDER:-blender}" >/dev/null 2>&1 || { printf '[!!] no blender on PATH; pass --blender PATH\n' >&2; exit 2; }
+  done
+fi
+[ -n "$BLENDER" ] || BLENDER="blender"
+command -v "$BLENDER" >/dev/null 2>&1 || { printf '[!!] no blender on PATH; pass --blender PATH\n' >&2; exit 2; }
 if [ "${1:-}" = "blender" ]; then shift; fi   # allow `-- blender -b …` and `-- -b …`
 
 # --- the physical pin --------------------------------------------------------------
