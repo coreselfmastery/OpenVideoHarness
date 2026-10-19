@@ -5,7 +5,7 @@
 // nvenc for an NVIDIA card). The chunks are joined without re-encoding. Video only: put the sound on with bin/vh mux.
 //
 // usage: node tools/film/render.mjs <project | page.html> --browser <chrome> [--out out/film.mp4] [--fps 30]
-//          [--range a:b | --frames k0:k1] [--dpr 1] [--res 720p] [--tier draft|review|final] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png]
+//          [--range a:b | --frames k0:k1] [--dpr 1] [--res 720p] [--tier beast|draft|review|final] [--workers 4] [--crf 16] [--preset medium] [--gop 60] [--png]
 //          [--quality 95] [--frame-timeout 120] [--force] [--real-clock] [--soft-gl] [--encoder x264|nvenc] [--gpu 0] [--gpus N]
 //        (bin/vh render finds the browser: CHROME_PATH, HyperFrames' chrome-headless-shell, then Chrome or Chromium)
 //
@@ -18,11 +18,14 @@
 //                  own layout: Chrome draws it at a fractional deviceScaleFactor, so a 480p or 720p draft of a
 //                  1080p film is the same picture at 20% / 44% of the pixels (a draft round drawn several times
 //                  faster); the master is still the full-size render. It sets --dpr, and the two conflict
-//   --tier t       the OpenHarness bridge: one word for the whole quality policy — draft = --res 480p and,
-//                  when an NVIDIA card answers, h264_nvenc p4 cq 28 (round-robin over the cards); review =
-//                  --res 720p, nvenc p5 cq 23; final = the master untouched: full size, x264, the determinism
-//                  contract. Each part stays overridable: an explicit --res/--dpr/--encoder/--crf/--preset
-//                  beats the tier for that part (no card / no NVENC build: the tier keeps x264, the crf rides)
+//   --tier t       the OpenHarness bridge: one word for the whole quality policy — beast = THE one tier
+//                  (playbook/01-pipeline.md): the film rendered ONCE at ship grade — --res 720p, and when
+//                  an NVIDIA card answers h264_nvenc p5 cq 21 round-robin over the cards, else x264
+//                  veryfast crf 20 (the same visual class at 2-3x the encode speed of medium); draft =
+//                  --res 480p and, when a card answers, nvenc p4 cq 28; review = --res 720p, nvenc p5 cq 23;
+//                  final = the master untouched: full size, x264, the determinism contract. Each part stays
+//                  overridable: an explicit --res/--dpr/--encoder/--crf/--preset beats the tier for that part
+//                  (no card / no NVENC build: the tier keeps x264, the crf rides)
 //   --gop 60       a keyframe every 60 frames exactly, from the span's first frame (default 2 s of frames); the chunks
 //                  are whole GOPs, so a later patch can cut the video on keyframes
 //   --png          lossless frames into the encoder (slower, larger pipes); default JPEG at --quality 95
@@ -84,7 +87,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (k === "--browser") o.browser = val();
   else if (k === "--real-clock") o.realClock = true;
   else if (k === "--soft-gl") o.softGl = true;
-  else if (k === "--tier") { const v = val(); if (v !== "draft" && v !== "review" && v !== "final") die(`--tier: draft, review or final, not ${JSON.stringify(v)}`); tier = v; }
+  else if (k === "--tier") { const v = val(); if (v !== "beast" && v !== "draft" && v !== "review" && v !== "final") die(`--tier: beast, draft, review or final, not ${JSON.stringify(v)}`); tier = v; }
   else if (k === "--encoder") { const v = val(); if (v !== "x264" && v !== "nvenc") die(`--encoder: x264 or nvenc, not ${JSON.stringify(v)}`); o.encoder = v; explicit.encoder = true; }
   else if (k === "--gpu") { const x = Number(val()); if (!Number.isInteger(x) || x < 0) die(`--gpu: a whole device number ≥ 0, not ${JSON.stringify(val())}`); o.gpu = x; }
   else if (k === "--gpus") { const x = Number(val()); if (!Number.isInteger(x) || x < 1) die(`--gpus: a whole number of cards ≥ 1, not ${JSON.stringify(val())}`); o.gpus = x; }
@@ -95,11 +98,14 @@ for (let i = 0; i < argv.length; i++) {
 if (!target) die("which project or page? (-h for the usage)");
 if (range && frames) die("--range or --frames, not both");
 if (res !== null && dprSet) die("--res or --dpr, not both (--res names the tier, --dpr the exact factor)");
-// --tier, the OpenHarness bridge: one word that picks the whole draft/review/final
-// policy (the same ladder tools/kaggle/render.sh uses for the HyperFrames path).
+// --tier, the OpenHarness bridge: one word that picks the whole quality policy
+// (the same ladder tools/kaggle/render.sh uses for the HyperFrames path).
 // Every part stays overridable: an explicit --res/--dpr/--encoder/--crf/--preset
 // beats the tier's choice for that part. final IS the master: full size, x264,
-// the byte-determinism contract.
+// the byte-determinism contract. beast is THE one tier (playbook/01-pipeline.md):
+// render once at ship grade — 720p, nvenc p5/cq21 when a card answers, else
+// x264 veryfast crf 20 — no draft ladder, no re-render rounds.
+if (tier === "beast" && res === null && !dprSet) res = "720p";
 if (tier === "draft" && res === null && !dprSet) res = "480p";
 if (tier === "review" && res === null && !dprSet) res = "720p";
 if (res !== null) {   // the tier: the short side of the video in lines, the page's own layout kept
@@ -121,18 +127,22 @@ if (o.encoder === "nvenc") {
   const enc = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" });
   if (!/\bh264_nvenc\b/.test(enc.stdout || "")) die("this ffmpeg has no h264_nvenc compiled in: install a build with it (Ubuntu's apt ffmpeg has it) or render --encoder x264");
 }
-// The tier's draft/review encoders: NVENC when a card answers (a soft preference —
+// The tier's encoders: NVENC when a card answers (a soft preference —
 // no card or no NVENC build and the tier stays on x264 with the same settings),
 // the same p4/cq28 and p5/cq23 ladder render.sh uses for the HyperFrames path.
-if ((tier === "draft" || tier === "review") && !explicit.encoder) {
+// beast tops the ladder: nvenc p5 cq 21, or on x264 veryfast + crf 20 — the
+// one-pass ship grade (visually the review class, encoded at a fraction of the
+// wall of preset medium; the JPEG capture at q95 is untouched either way).
+if ((tier === "beast" || tier === "draft" || tier === "review") && !explicit.encoder) {
   const enc = spawnSync("ffmpeg", ["-hide_banner", "-encoders"], { encoding: "utf8" });
   const smi = spawnSync("nvidia-smi", ["-L"], { encoding: "utf8" });
   if (/\bh264_nvenc\b/.test(enc.stdout || "") && smi.status === 0) {
     o.encoder = "nvenc";
     if (!explicit.preset) o.preset = tier === "draft" ? "p4" : "p5";
-    if (!explicit.crf) o.crf = tier === "draft" ? 28 : 23;
+    if (!explicit.crf) o.crf = tier === "draft" ? 28 : tier === "beast" ? 21 : 23;
   } else if (!explicit.crf) {
-    o.crf = tier === "draft" ? 28 : 23;   // the size ladder rides even on x264
+    o.crf = tier === "draft" ? 28 : tier === "beast" ? 20 : 23;   // the size ladder rides even on x264
+    if (tier === "beast" && !explicit.preset) o.preset = "veryfast";
   }
 }
 // NVENC across BOTH cards: with --encoder nvenc, chunk worker w encodes on gpu

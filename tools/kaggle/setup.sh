@@ -241,8 +241,9 @@ if [ "$NVENC" = 1 ]; then
 #      $NVENC_GPU, and neither waits on the other. -gpu is h264_nvenc's own option
 #      (ffmpeg -h encoder=h264_nvenc).
 #   2. OVH_KAGGLE_TIER (exported by tools/kaggle/render.sh --tier) retunes the h264_nvenc the engine
-#      runs, replacing the -preset/-cq/-b:v it chose: draft → -preset p4 -cq 28 (fast to produce, good
-#      enough to judge), final → -preset p7 -cq 19 (the best Turing NVENC does; still many × realtime).
+#      runs, replacing the -preset/-cq/-b:v it chose: beast → -preset p5 -cq 21 (THE one tier: one
+#      ship-grade pass, the review class at a fraction of p7's wall), draft → -preset p4 -cq 28 (fast
+#      to produce, good enough to judge), final → -preset p7 -cq 19 (the best Turing NVENC does).
 #      The values the engine itself passes for these three options are swallowed; everything else
 #      (gop, colour tags, filters, streams) is kept as the engine wrote it. OVH_KAGGLE_TUNE=off turns
 #      the retuning off (the GPU pin stays).
@@ -260,6 +261,7 @@ for a in "\$@"; do
     h264_nvenc|*=h264_nvenc)
       out+=("\$a" -gpu "\$GPU")
       case "\$TIER" in
+        beast) out+=(-preset p5 -cq 21); tuned=1 ;;
         draft) out+=(-preset p4 -cq 28); tuned=1 ;;
         final) out+=(-preset p7 -cq 19); tuned=1 ;;
       esac ;;

@@ -15,7 +15,7 @@
 #   for this tool, exactly like render-split.sh's determinism gate for web films.
 #
 # usage: tools/blender_split.sh <scene.blend> [--frames START-END] [--out DIR]
-#                              [--gpus N[,M…]] [--profile turbo|draft|final|final-cpu]
+#                              [--gpus N[,M…]] [--profile beast|turbo|draft|final|final-cpu]
 #                              [--scale N] [--bias A:B…] [--resume] [--encode OUT.mp4]
 #                              [--upscale H] [--fps N] [--nvenc] [--blender PATH] [--dry-run]
 #   <scene.blend>    the scene to render (required).
@@ -87,7 +87,7 @@ while [ $# -gt 0 ]; do
 done
 [ -n "$SCENE" ] || { usage >&2; exit 2; }
 [ -f "$SCENE" ] || die "scene not found: $SCENE"
-case "$PROFILE" in turbo|previz|draft|final|final-cpu) ;; *) die "--profile is turbo | draft | final | final-cpu, not $PROFILE" ;; esac
+case "$PROFILE" in beast|turbo|previz|draft|final|final-cpu) ;; *) die "--profile is beast | turbo | draft | final | final-cpu, not $PROFILE" ;; esac
 case "$FPS" in ''|*[!0-9]*) die "--fps takes a number, not $FPS" ;; esac
 if [ -n "$SCALE" ]; then
   case "$SCALE" in ''|*[!0-9]*) die "--scale takes 1-100 (a percentage), not $SCALE" ;; esac

@@ -7,7 +7,10 @@
 #   tools/kaggle/render.sh <project> [options]        <project>: the folder with index.html
 #
 #   Options this script takes (everything else is passed to `hyperframes render` unchanged):
-#     --tier draft|final  the review round in one word. draft = `--quality draft` + NVENC tuned for
+#     --tier beast|draft|final  the review round in one word. beast = THE one tier (playbook/01-pipeline.md):
+#                         the film rendered ONCE at ship grade — the fast full-power pass: `--quality draft`
+#                         capture + NVENC at its best for the web (preset p5, cq 21 — visually the review
+#                         class, a fraction of p7's wall). draft = `--quality draft` + NVENC tuned for
 #                         iteration (preset p4, cq 28 — a fast, good-enough look); final = `--quality
 #                         delivery` + NVENC at its best (preset p7, cq 19). Not just the encoder: the
 #                         tier is exported as OVH_KAGGLE_TIER, which .kaggle/ffmpeg-gpu.sh reads to
@@ -21,6 +24,7 @@
 #                         file and the stop command are printed. The last 5 logs are kept, older ones go
 #
 #   Examples:
+#     tools/kaggle/render.sh projects/26-launch --tier beast              # THE one tier: one ship-grade pass
 #     tools/kaggle/render.sh projects/26-launch --tier draft              # review pass (fast)
 #     tools/kaggle/render.sh projects/26-launch --tier final              # the master
 #     tools/kaggle/render.sh projects/26-launch --quality draft --output-resolution 4k
@@ -99,8 +103,8 @@ while [ $# -gt 0 ]; do
   shift
 done
 case "$TIER" in
-  draft|final|"") ;;
-  *) printf '\033[31m✗\033[0m --tier: draft or final, not "%s"\n' "$TIER" >&2; exit 1 ;;
+  beast|draft|final|"") ;;
+  *) printf '\033[31m✗\033[0m --tier: beast, draft or final, not "%s"\n' "$TIER" >&2; exit 1 ;;
 esac
 for v in "$WORKERS_OPT" "$FPS_OPT"; do
   if [ -z "$v" ]; then continue; fi
@@ -109,7 +113,7 @@ done
 for a in ${pass[@]+"${pass[@]}"}; do
   case "$a" in --quality|-q|--quality=*) printf '\033[31m✗\033[0m --quality and --tier both name the quality: give one\n' >&2; exit 1 ;; esac
 done
-case "$TIER" in draft) pass+=(--quality draft) ;; final) pass+=(--quality delivery) ;; esac
+case "$TIER" in beast|draft) pass+=(--quality draft) ;; final) pass+=(--quality delivery) ;; esac
 
 if [ ! -f "$PROJ/index.html" ]; then
   printf '\033[31m✗\033[0m no index.html in %s (a HyperFrames project is a folder with one; bin/vh hf-init scaffolds it)\n' "$PROJ" >&2

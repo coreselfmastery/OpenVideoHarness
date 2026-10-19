@@ -41,6 +41,23 @@
 
 最后一行是给能调推理强度的 agent 的建议（例如 Claude Code 选模型时的 effort 档位），不能调就忽略。`quick` 的做法见 `playbook/quick.md`。
 
+## BEAST：只有一个档位
+
+用户要的是一支片子一次做对，不要阶梯、不要模板。这就是 beast：**一个词 = 整条出片政策**。上面三档是给还想走阶梯的人留的；走 beast 就不走阶梯——直接以可交付的画质渲染一次，画质不降级，时间砍到最短。
+
+| 环节 | beast 的做法 |
+|---|---|
+| 立意与风格 | **不用任何预设**（`styles/` 一概不选）。从材料本身推一个专属视觉语言：色板、字形、节奏都为本片发明，唯一的标准是"这支片子该长什么样"。31 个预设是参考读物，不是出发点 |
+| 引擎 | **全部可用，按镜头选**：生成式画面走页面合约引擎（canvas-film / p5.brush / HyperFrames），数学推导走 ManimGX，电影级 hero 镜头走 Blender `--profile beast`（turbo 采样 + 70% 阶梯，engines/blender-perf.md）。混合引擎是常态，不是例外 |
+| 渲染 | **一次**：`bin/vh render <项目> --tier beast`。720p 级、有 NVENC 就 p5/cq21（双卡轮转），没有就 x264 veryfast/crf20——视觉上就是 review 档，编码时间一小截。不渲 draft、不渲 final、不走多轮阶梯 |
+| 自查 | 出片后跑一遍：`bin/vh check`（色彩标签、帧数自动验）、联系表 + 前 2 s strip 扫一眼静默故障；发现问题的段落用 `bin/vh patch` 局部补，不整片重渲 |
+| 声音 | 和 standard 一样配齐（配乐/配音 + 关键音效 + 混音 profile + `bin/vh qa`），但只混一版 |
+| 底线 | 不降：确定性合约照旧（页面合约的 t 纯函数）、色彩标签、帧数核对。降的只有"渲染遍数"——这正是省时间的来源 |
+
+为什么快：三档流程的隐形成本是**整片渲 2–3 遍**（draft 迭代 + final 母版）加上 studio 的多轮评分循环。beast 把渲染遍数压到 1，把迭代留在便宜的层面（`bin/vh frames --at` 抽帧看、480p 局部 `--range` 预览），出片那一步只发生一次。Kaggle 2×T4 上一支 4 分钟片子，beast 渲染段是分钟级，不是小时级。
+
+OpenHarness 侧同一个词：`render_scenes(tier="beast")`（`render_engines.json` 里 `{tier}` 占位符原样送达），OpenHarness 的 `TIERS` 里 beast 就是 720p 级。两个仓库说的是同一句话。
+
 ## 项目目录约定
 
 ```

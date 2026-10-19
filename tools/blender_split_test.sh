@@ -183,6 +183,14 @@ else
   echo "  ! ffprobe not on PATH: upscale content checks skipped"
 fi
 
+echo "→ 16. --profile beast: THE one tier — turbo samples + the 70% ladder as ONE word"
+run_split beast --frames 0-9 --profile beast >/dev/null 2>&1
+[ "$(count_files "$TMP/out-beast")" = 10 ] && ok "beast: 10 frames on disk" || bad "beast: expected 10, got $(count_files "$TMP/out-beast")"
+grep -q "\[perf\] profile beast · scale 70%" "$TMP/out-beast/half-0.log" && grep -q "\[perf\] profile beast · scale 70%" "$TMP/out-beast/half-1.log" \
+  && ok "both halves: profile beast + the auto 70% ladder (the one-word policy)" || bad "beast profile not applied: $(head -3 "$TMP/out-beast/half-0.log" 2>/dev/null)"
+DRYOUT="$(run_split beast2 --frames 0-9 --profile beast --scale 40 --dry-run)"
+echo "$DRYOUT" | grep -q -- "--scale 40" && ok "an explicit --scale still beats beast's 70% default" || bad "explicit scale lost in beast: $DRYOUT"
+
 echo
 printf '%s: %d checks passed, %d failed\n' "blender_split" "$PASS" "$FAIL"
 [ "$FAIL" = 0 ] || exit 1

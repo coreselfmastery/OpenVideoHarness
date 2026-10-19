@@ -15,7 +15,8 @@
 #                 on Linux (the T4 doctrine; RT-core owners pass optix), Metal on
 #                 macOS. Mutually sensible with --gpu: prefer --gpu for the physical
 #                 pin and --device cpu to force CPU from a pinned process.
-#   --profile P   turbo | draft | final | final-cpu — inserted as a --python chain
+#   --profile P   beast | turbo | draft | final | final-cpu — inserted as a --python chain
+#                 (beast = THE one tier: turbo samples + the 70% ladder, one word)
 #                 BEFORE your args: the script runs before the -a/-f render action,
 #                 so one process applies the profile and renders with it (verified
 #                 live). For scripts that rebuild the scene from scratch (read_factory_
@@ -100,8 +101,14 @@ if [ -n "$SCALE" ]; then
 fi
 if [ -n "$PROFILE" ]; then
   case "$PROFILE" in
+    beast)  # THE one tier (playbook/01-pipeline.md): turbo samples + the 70% ladder as
+            # ONE word — the review-grade speed contract (~1/3.5 wall of single-GPU final).
+            # An explicit --scale still wins; the lanczos upscale at encode time rides
+            # blender_split.sh --upscale as documented in engines/blender-perf.md.
+      [ -n "$SCALE" ] || { SCALE=70; printf '[perf] beast: no --scale given, the 70%% ladder rides (engines/blender-perf.md)\n'; }
+      ;;
     turbo|previz|draft|final|final-cpu|fast|cpu|deterministic) ;;
-    *) printf '[!!] --profile is turbo | draft | final | final-cpu, not %s\n' "$PROFILE" >&2; exit 2 ;;
+    *) printf '[!!] --profile is beast | turbo | draft | final | final-cpu, not %s\n' "$PROFILE" >&2; exit 2 ;;
   esac
   PERF_PRE=(--python tools/blender_perf.py --python-exit-code 1)
   PERF_TAIL=(apply --profile "$PROFILE")

@@ -27,7 +27,8 @@ process can apply a profile and render with it — verified live):
       check            apply, then read back EVERY setting and assert it landed
       report           print the effective settings of the current scene
 
-    --profile   turbo | draft | final | final-cpu      (turbo 16spp/30s cap — previz
+    --profile   beast | turbo | draft | final | final-cpu   (beast = THE one tier: turbo 16spp + the
+                 70% ladder via blender_run.sh --profile beast; turbo 16spp/30s cap — previz
                  and animation blocking; draft 32spp/120s cap, final 128spp/600s cap +
                  adaptive 0.02, final-cpu the determinism anchor: CPU, fixed 128spp, no
                  time limit, no persistent data)
@@ -54,9 +55,17 @@ except ImportError:
     sys.exit("blender_perf runs inside Blender: blender -b <file> --python tools/blender_perf.py -- <subcommand> …")
 
 PROFILES = {
-    # the four contracts. Shared by all: bounce budget 6/3/3/4/2/4, indirect clamp 10,
+    # The five contracts. Shared by all: bounce budget 6/3/3/4/2/4, indirect clamp 10,
     # OIDN RGB+Albedo+Normal, CPU compositor, AgX; the differences are the determinism
     # trade-offs each one makes (engines/blender-perf.md, "哪个设置拿走了确定性").
+    # beast = THE one tier (playbook/01-pipeline.md): turbo's samples with the 70%
+    # resolution ladder (blender_run.sh --profile beast adds --scale 70; pair with
+    # blender_split.sh --upscale lanczos at encode) — the review-grade speed contract.
+    "beast": {
+        "samples": 16, "adaptive": True, "adaptive_threshold": 0.2, "adaptive_min_samples": 0,
+        "time_limit": 30.0, "prefilter": "ACCURATE", "denoise_quality": "HIGH",
+        "simplify": True, "persistent": True, "device": "auto",
+    },
     "turbo": {
         "samples": 16, "adaptive": True, "adaptive_threshold": 0.2, "adaptive_min_samples": 0,
         "time_limit": 30.0, "prefilter": "ACCURATE", "denoise_quality": "HIGH",
@@ -78,7 +87,7 @@ PROFILES = {
         "simplify": False, "persistent": False, "device": "cpu",
     },
 }
-ALIASES = {"previz": "turbo", "review": "draft", "fast": "final", "cpu": "final-cpu", "deterministic": "final-cpu"}
+ALIASES = {"previz": "turbo", "review": "draft", "fast": "final", "cpu": "final-cpu", "deterministic": "final-cpu", "one-tier": "beast"}
 # "review" is OpenHarness's tier name (draft/review/final): a review-tier render
 # wants the fast-but-honest Cycles profile, which is draft here (docs: the bridge
 # section of engines/blender-perf.md; OpenHarness docs/VIDEO_HARNESS.md).
@@ -320,7 +329,7 @@ def main():
         return 0
     if o["cmd"] in ("apply", "check"):
         if not o["profile"]:
-            print("apply/check need --profile turbo|draft|final|final-cpu"); return 2
+            print("apply/check need --profile beast|turbo|draft|final|final-cpu"); return 2
         scale = None
         if o["scale"] is not None:
             if not o["scale"].isdigit() or not 1 <= int(o["scale"]) <= 100:

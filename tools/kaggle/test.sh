@@ -129,6 +129,9 @@ chk "tier draft: p4 cq 28 replace the engine's own, nothing of the engine's is l
 got=$(OVH_KAGGLE_TIER=final wrap -i pipe:0 -c:v h264_nvenc -preset p5 -cq 15 -g 60 out.mp4)
 chk "tier final: p7 cq 19 replace the engine's own" \
   "$got" "-i pipe:0 -c:v h264_nvenc -gpu 1 -preset p7 -cq 19 -g 60 out.mp4"
+got=$(OVH_KAGGLE_TIER=beast wrap -i pipe:0 -c:v h264_nvenc -preset p1 -cq 28 -sc_threshold 0 out.mp4)
+chk "tier beast: p5 cq 21 replace the engine's own (THE one tier's ship-grade retune)" \
+  "$got" "-i pipe:0 -c:v h264_nvenc -gpu 1 -preset p5 -cq 21 -sc_threshold 0 out.mp4"
 got=$(OVH_KAGGLE_TIER=final OVH_KAGGLE_TUNE=off wrap -i pipe:0 -c:v h264_nvenc -preset p5 -cq 15 out.mp4)
 chk "OVH_KAGGLE_TUNE=off: only the pin, the engine's settings back" \
   "$got" "-i pipe:0 -c:v h264_nvenc -gpu 1 -preset p5 -cq 15 out.mp4"
@@ -199,6 +202,11 @@ echo "$OUT"  | grep -q "streaming cap 460 s" && ok "the streaming cap is the fil
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P" --tier final 2>&1); rc=$?
 chk "render.sh --tier final: exits 0" "$rc" "0"
 sed -n '1p' "$NPXLOG" | grep -q -- "--quality delivery" && ok "tier final passes --quality delivery" || bad "tier final did not pass --quality delivery"
+: > "$NPXLOG"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P" --tier beast 2>&1); rc=$?
+chk "render.sh --tier beast: exits 0 (the one tier rides the fast full-power pass)" "$rc" "0"
+sed -n '1p' "$NPXLOG" | grep -q -- "--quality draft" && ok "tier beast passes --quality draft (fast capture)" || bad "tier beast did not pass --quality draft"
+echo "$OUT" | grep -q "retuned for the beast tier" && ok "the plan says the NVENC is retuned for beast (p5 cq 21 by the wrapper)" || bad "no beast retune note in the plan"
 
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render.sh "$P" --tier draft --quality draft 2>&1); rc=$?
 [ "$rc" != 0 ] && ok "--tier and --quality together are refused" || bad "--tier and --quality were both accepted"
@@ -507,7 +515,7 @@ OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier bogus --browser none 2>&
 OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --gpus 0 --browser none 2>&1); rc=$?
 [ "$rc" = 2 ] && echo "$OUT" | grep -q "cards . 1" && ok "--gpus 0 is refused (a whole number of cards >= 1)" || bad "--gpus 0 was accepted: [$OUT]"
 OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier draft --browser none -h 2>/dev/null; node "$ROOT/tools/film/render.mjs" --help 2>&1)
-echo "$OUT" | grep -q -- "--tier draft|review|final" && ok "the usage documents --tier" || bad "the usage does not document --tier"
+echo "$OUT" | grep -q -- "--tier beast|draft|review|final" && ok "the usage documents --tier" || bad "the usage does not document --tier"
 # draft names the 480p tier on a 540p page (dpr 0.888 >= the 0.25 floor), final leaves it alone
 OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier final --gpus 1 --browser none 2>&1); rc=$?
 [ "$rc" = 2 ] && echo "$OUT" | grep -q "could not start none" && ok "final is the master (no --res, no probe: it got all the way to the browser)" || bad "final tier changed the master's own settings: [$OUT]"
@@ -517,6 +525,14 @@ OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier draft --dpr 1 --browser 
 [ "$rc" = 2 ] && echo "$OUT" | grep -q "could not start none" && ! echo "$OUT" | grep -q "not both" \
   && ok "an explicit --dpr beats the tier's own --res (no conflict raised)" \
   || bad "--tier draft with --dpr misbehaved: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier beast --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "more pixels than the page has" \
+  && ok "beast names the 720p tier (a 540p page is honestly refused: it cannot ship 720p)" \
+  || bad "beast's 720p mapping misbehaved: [$OUT]"
+OUT=$(node "$ROOT/tools/film/render.mjs" "$COST" --tier beast --dpr 1 --browser none 2>&1); rc=$?
+[ "$rc" = 2 ] && echo "$OUT" | grep -q "could not start none" && ! echo "$OUT" | grep -q "not both" \
+  && ok "an explicit --dpr beats beast's own --res (the one tier stays overridable)" \
+  || bad "--tier beast with --dpr misbehaved: [$OUT]"
 
 # ── lambda.sh: the distributed road, driven against a stub engine and stub AWS tools ────────────
 printf '\033[36m→\033[0m lambda.sh (the project mapped onto the engine lambda commands, the refusals)\n'
