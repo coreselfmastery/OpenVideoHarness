@@ -1,0 +1,91 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=960, height=540">
+<style>
+  html, body { margin: 0; background: #10141f; overflow: hidden; }
+  /* css-cost: the same static scene twice, the expensive way and the cheap way.
+     This page is the expensive way — the frosted-glass panel is a live backdrop-filter the compositor
+     re-runs for every frame the moving satellite and the progress bar dirty (the trap the HyperFrames
+     tuning table warns about: a blur over content that does not change still pays per frame). baked.html
+     is the same picture from one pre-rendered PNG (assets/scene.png, baked from this page with the
+     animated layer hidden) plus the same two moving elements on top. tools/kaggle/README.md has the
+     measured gap between the two; both pages must draw the same frames (the test suite PSNR-checks). */
+  #stage { position: relative; width: 960px; height: 540px; background: #10141f; }
+
+  /* the static scene: colour blobs (radial gradients — cheap to paint) behind a glass panel */
+  .blob { position: absolute; border-radius: 50%; }
+  .b1 { left: -140px; top: -120px; width: 520px; height: 520px;
+        background: radial-gradient(circle at 40% 40%, #ff8a3dcc, #ff8a3d00 70%); }
+  .b2 { left: 380px; top: 60px; width: 620px; height: 620px;
+        background: radial-gradient(circle at 55% 45%, #2f6394cc, #2f639400 70%); }
+  .b3 { left: 120px; top: 260px; width: 560px; height: 420px;
+        background: radial-gradient(circle at 50% 50%, #7a4bd0aa, #7a4bd000 72%); }
+
+  /* the glass panels: the expensive lines are the backdrop-filters below — blurs over static content
+     that are re-filtered on every composite of an animating page, and stacked (glass2 drinks glass1's
+     already-filtered output, the “叠” of the tuning table). This is what baking replaces. */
+  #glass { position: absolute; left: 60px; top: 120px; width: 640px; height: 340px;
+           border-radius: 18px;
+           backdrop-filter: blur(34px) saturate(140%);
+           -webkit-backdrop-filter: blur(34px) saturate(140%);
+           background: rgba(255, 255, 255, 0.06);
+           border: 1px solid rgba(255, 255, 255, 0.18);
+           box-shadow: 0 18px 50px rgba(0, 0, 0, 0.35); }
+  #glass2 { position: absolute; left: 400px; top: 260px; width: 480px; height: 220px;
+            border-radius: 14px;
+            backdrop-filter: blur(24px) saturate(120%);
+            -webkit-backdrop-filter: blur(24px) saturate(120%);
+            background: rgba(10, 17, 28, 0.10);
+            border: 1px solid rgba(255, 255, 255, 0.14);
+            box-shadow: 0 14px 40px rgba(0, 0, 0, 0.30); }
+  #glass h1 { position: absolute; left: 44px; top: 92px; margin: 0;
+              font: 700 44px/1.2 sans-serif; color: #f5efe6; letter-spacing: 0.5px; }
+  #glass p  { position: absolute; left: 44px; top: 160px; margin: 0; width: 300px;
+              font: 400 19px/1.55 sans-serif; color: #b9c4d8; }
+
+  /* the animated layer: pure functions of t, drawn on top and never behind the glass, so the baked
+     page can draw exactly the same thing over the PNG. data-bake-hide is what the bake hides. */
+  #anim { position: absolute; inset: 0; }
+  #orbit { position: absolute; left: 790px; top: 130px; width: 8px; height: 8px; }
+  #sat   { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%;
+           background: #ffc241; box-shadow: 0 0 14px 4px rgba(255, 194, 65, 0.55); }
+  #track { position: absolute; left: 720px; top: 130px; width: 140px; height: 2px;
+           background: rgba(255, 255, 255, 0.22); }
+  #bar   { position: absolute; left: 0; top: 508px; height: 6px; width: 0;
+           background: linear-gradient(90deg, #ff8a3d, #ffc241); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <div class="blob b1"></div>
+  <div class="blob b2"></div>
+  <div class="blob b3"></div>
+  <div id="glass">
+    <h1>Backdropped</h1>
+    <p>The blur is over content that never moves — and still the compositor pays for it on every
+       frame the satellite dirties. Twice here, stacked. Bake the scene once and it is one image.</p>
+  </div>
+  <div id="glass2"></div>
+  <div id="anim" data-bake-hide>
+    <div id="track"></div>
+    <div id="orbit"><div id="sat"></div></div>
+    <div id="bar"></div>
+  </div>
+</div>
+<script>
+  const sat = document.getElementById("sat"), bar = document.getElementById("bar");
+  const TAU = Math.PI * 2;
+  window.film = {
+    duration: 6,
+    load() { return document.fonts.ready; },
+    frame(t) {
+      const a = (t / 6) * TAU * 3;              // three orbits over the film
+      sat.style.transform = `translate(${(Math.cos(a) * 70).toFixed(3)}px, ${(Math.sin(a) * 44).toFixed(3)}px)`;
+      bar.style.width = ((t / 6) * 960).toFixed(2) + "px";
+    },
+  };
+</script>
+</body>
+</html>

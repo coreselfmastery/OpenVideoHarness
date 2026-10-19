@@ -1,0 +1,49 @@
+<!doctype html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=960, height=540">
+<style>
+  html, body { margin: 0; background: #10141f; overflow: hidden; }
+  /* css-cost, the cheap twin of index.html: the static scene (colour blobs, the frosted-glass panel
+     with its blur, the text) is assets/scene.png — baked once from that page with its animated layer
+     hidden — and only the two moving elements are drawn live on top. Same picture, same frames (the
+     suite PSNR-checks the two films against each other), none of the per-frame blur. */
+  #stage { position: relative; width: 960px; height: 540px; background: #10141f; }
+  #scene { position: absolute; left: 0; top: 0; width: 960px; height: 540px; }
+
+  /* the animated layer: the same two elements, the same pure functions of t, as index.html */
+  #anim { position: absolute; inset: 0; }
+  #orbit { position: absolute; left: 790px; top: 130px; width: 8px; height: 8px; }
+  #sat   { position: absolute; left: -9px; top: -9px; width: 18px; height: 18px; border-radius: 50%;
+           background: #ffc241; box-shadow: 0 0 14px 4px rgba(255, 194, 65, 0.55); }
+  #track { position: absolute; left: 720px; top: 130px; width: 140px; height: 2px;
+           background: rgba(255, 255, 255, 0.22); }
+  #bar   { position: absolute; left: 0; top: 508px; height: 6px; width: 0;
+           background: linear-gradient(90deg, #ff8a3d, #ffc241); }
+</style>
+</head>
+<body>
+<div id="stage">
+  <img id="scene" src="assets/scene.png" alt="">
+  <div id="anim">
+    <div id="track"></div>
+    <div id="orbit"><div id="sat"></div></div>
+    <div id="bar"></div>
+  </div>
+</div>
+<script>
+  const sat = document.getElementById("sat"), bar = document.getElementById("bar");
+  const TAU = Math.PI * 2;
+  window.film = {
+    duration: 6,
+    load() { return Promise.resolve(); },
+    frame(t) {
+      const a = (t / 6) * TAU * 3;              // three orbits over the film
+      sat.style.transform = `translate(${(Math.cos(a) * 70).toFixed(3)}px, ${(Math.sin(a) * 44).toFixed(3)}px)`;
+      bar.style.width = ((t / 6) * 960).toFixed(2) + "px";
+    },
+  };
+</script>
+</body>
+</html>
