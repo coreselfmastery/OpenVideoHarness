@@ -817,6 +817,87 @@ else
   pkill -f "$HFE2E" 2>/dev/null || true
 fi
 
+# ── session.sh: the one-command boot (stub llama-server + a curl that comes up on the 2nd probe) ──
+cp "$ROOT/tools/kaggle/session.sh" "$TESTROOT/tools/kaggle/"
+# curl stub: every call recorded; a /models probe answers OK only after the counter in
+# $OVH_TEST_CURL_COUNT has been bumped $OVH_TEST_CURL_READY times (exercises the poll loop)
+cat > "$BIN/curl" <<'EOF'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "${OVH_TEST_CURL_LOG:-/dev/null}"
+for a in "$@"; do case "$a" in
+  *"/models"*)
+    cnt="${OVH_TEST_CURL_COUNT:-}"
+    if [ -n "$cnt" ]; then
+      n=$(cat "$cnt" 2>/dev/null || echo 0); n=$((n+1)); printf '%s' "$n" > "$cnt"
+      [ "$n" -ge "${OVH_TEST_CURL_READY:-2}" ] && exit 0
+      exit 7
+    fi
+    exit 0 ;;
+esac; done
+exit 0
+EOF
+chmod +x "$BIN/curl"
+# llama-server stub: records its env + args, then serves (sleeps) — killable like the real one
+cat > "$BIN/llama-server" <<'EOF'
+#!/usr/bin/env bash
+{ printf 'CUDA_VISIBLE_DEVICES=%s\n' "${CUDA_VISIBLE_DEVICES:-unset}"
+  printf 'ARGS: %s\n' "$*"; } >> "${OVH_TEST_LLAMA_LOG:-/dev/null}"
+exec sleep 300
+EOF
+chmod +x "$BIN/llama-server"
+
+printf '\033→\033 session.sh — the one-command boot against stubs\n'
+export OVH_TEST_CURL_LOG="$WORK/curl.log" OVH_TEST_LLAMA_LOG="$WORK/llama.log"
+: > "$OVH_TEST_LLAMA_LOG"
+rm -f "$WORK/curl.count"
+touch "$WORK/model.gguf"
+SSOUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" HOME="$WORK/home" VLM_GGUF="$WORK/model.gguf" VLM_GPU=1 \
+  bash tools/kaggle/session.sh --vlm-only --vlm-timeout 20 2>&1); rc=$?
+chk "session.sh boots the VLM from a local GGUF (exit 0)" "$rc" "0"
+grep -q "CUDA_VISIBLE_DEVICES=1" "$OVH_TEST_LLAMA_LOG" && ok "the VLM launch is pinned to GPU 1" \
+  || bad "GPU pin missing from the launch env: $(cat "$OVH_TEST_LLAMA_LOG")"
+grep -q -- "-m $WORK/model.gguf" "$OVH_TEST_LLAMA_LOG" && ok "the GGUF path is passed to llama-server" \
+  || bad "GGUF path missing: $(cat "$OVH_TEST_LLAMA_LOG")"
+grep -q -- "-ngl 99" "$OVH_TEST_LLAMA_LOG" && ok "all layers go to the GPU (-ngl 99)" || bad "-ngl 99 missing"
+echo "$SSOUT" | grep -q "VLM server ready at http://127.0.0.1:8001/v1" && ok "the ready card names the endpoint" \
+  || bad "no ready card: $(echo "$SSOUT" | tail -2)"
+grep -q "OPENHARNESS_MINICPM_BASE_URL='http://127.0.0.1:8001/v1'" "$TESTROOT/.kaggle/env.sh" \
+  && ok "env.sh carries the VLM endpoint for OpenHarness" || bad "env.sh missing the endpoint block"
+grep -q "OPENHARNESS_MINICPM_MODEL='model.gguf'" "$TESTROOT/.kaggle/env.sh" \
+  && ok "env.sh carries the served model name" || bad "env.sh missing the model name"
+SS_PID=$(cat "$TESTROOT/.kaggle/vlm.pid" 2>/dev/null || echo "")
+chkno "a live server pid was recorded" "$SS_PID" ""
+
+# the re-run: a server already answering is REUSED, not relaunched
+LLAMA_LINES=$(wc -l < "$OVH_TEST_LLAMA_LOG")
+SSOUT2=$(cd "$TESTROOT" && PATH="$BIN:$PATH" HOME="$WORK/home" VLM_GPU=1 \
+  bash tools/kaggle/session.sh --vlm-only --vlm-timeout 20 2>&1); rc=$?
+chk "the re-run exits 0" "$rc" "0"
+echo "$SSOUT2" | grep -q "already up.*reusing, nothing relaunched" && ok "the re-run reuses the running server" \
+  || bad "re-run did not reuse: $(echo "$SSOUT2" | grep -a 'VLM' | head -2)"
+chk "no second llama-server was launched" "$(wc -l < "$OVH_TEST_LLAMA_LOG")" "$LLAMA_LINES"
+NBLOCKS=$(grep -c "OPENHARNESS_MINICPM_BASE_URL" "$TESTROOT/.kaggle/env.sh" || true)
+chk "the env.sh VLM block stays single (idempotent rewrite)" "$NBLOCKS" "1"
+
+# --stop-vlm kills exactly what was started
+SSOUT3=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/session.sh --stop-vlm 2>&1); rc=$?
+chk "--stop-vlm exits 0" "$rc" "0"
+echo "$SSOUT3" | grep -q "VLM server stopped" && ok "--stop-vlm stops the server" || bad "stop card missing"
+if [ -n "$SS_PID" ] && kill -0 "$SS_PID" 2>/dev/null; then bad "the stub server survived --stop-vlm"; else ok "the stub server is gone"; fi
+chk "--stop-vlm cleaned the pid file" "$(cat "$TESTROOT/.kaggle/vlm.pid" 2>/dev/null || echo x)" "x"
+
+# nothing runnable and nothing up: honest exit 2 with the known-good hints
+SSOUT4=$(cd "$TESTROOT" && env -u VLM_GGUF -u VLM_LAUNCH_CMD -u VLM_GPU PATH=/usr/bin:/bin \
+  bash tools/kaggle/session.sh --vlm-only --vlm-timeout 3 2>&1); rc=$?
+chk "no launcher + no server -> exit 2 (honest failure)" "$rc" "2"
+echo "$SSOUT4" | grep -q "no VLM launcher found" && ok "the failure names the problem" || bad "failure reason missing"
+echo "$SSOUT4" | grep -q "llama-server -m MiniCPM-V-4_5-Q4_K_M.gguf" && ok "the hints show the known-good commands" || bad "hints missing"
+# and a --openharness path without pyproject.toml is refused, not half-installed
+SSOUT5=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/session.sh --vlm-only --openharness "$WORK" 2>&1); rc=$?
+chk "--openharness without pyproject.toml -> exit 1" "$rc" "1"
+echo "$SSOUT5" | grep -q "has no pyproject.toml" && ok "the refusal explains itself" || bad "refusal reason missing"
+rm -f "$BIN/curl" "$BIN/llama-server"
+
 printf '\n'
 if [ "$fails" = 0 ]; then printf '\033[32m✓\033[0m kaggle: %s checks passed\n' "$ran"; else printf '\033[31m✗\033[0m kaggle: %s of %s checks failed\n' "$fails" "$ran"; fi
 exit "$fails"

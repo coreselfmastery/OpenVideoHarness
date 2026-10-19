@@ -32,6 +32,22 @@ HyperFrames 一次渲染是两种负载：**Chrome 画帧**（DOM、CSS、GPU �
 
 `nvidia-smi -l 1` 能看到：render.sh 时 GPU 0 画帧、GPU 1 编码；render-split.sh 时两块卡都各有一个 NVENC 会话，CPU 上两个浏览器并行画帧。Chrome 用不了第二块卡是 Chrome 的 EGL 设备选择没有命令行开关（`CUDA_VISIBLE_DEVICES` 到不了它——EGL 枚举设备在 Chrome 内部完成，不走 CUDA）；好在编码正是从渲染里卸下来的那部分负载，而且 T4 的 NVENC 是独立的硬件块，和光栅化不抢同一个 SM 时间片。
 
+## session.sh：一条命令开机（渲染栈 + 视觉 QA 服务器）
+
+`tools/kaggle/session.sh` 把一个会话要做的开机动作收成一条命令：机器一眼、`setup.sh`（渲染栈）、**GPU 1 上的 MiniCPM-V 视觉 QA 服务器**、可选的 OpenHarness 安装。可重复跑：已在应答的服务器会被**复用**而不是重复拉起。
+
+```bash
+!bash tools/kaggle/session.sh                                   # 全量开机（setup + VLM）
+!bash tools/kaggle/session.sh --skip-setup                      # 续会话：跳过 setup 探针
+!bash tools/kaggle/session.sh --openharness /kaggle/working/OpenHarness   # 顺手 pip -e（pip 缓存放持久卷）
+!bash tools/kaggle/session.sh --stop-vlm                        # 收摊：只停它拉起的服务器
+```
+
+- **VLM 启动顺序**（第一个命中的生效，不会偷偷下载东西）：① 已在应答的 `OPENHARNESS_MINICPM_BASE_URL`（或上次拉起的 `.kaggle/vlm.env`）→ 原样复用；② `VLM_LAUNCH_CMD`（你的原样命令）；③ PATH 上的 `llama-server` + `VLM_GGUF`（本地 GGUF，`-ngl 99` 全层上卡）；④ `ollama`（缺模型才 `pull`）；⑤ `vllm`。都没有→ 打印已知好命令、exit 2（和 `minicpm_vlm` 工具的 check_server 同一套提示，一个故事）。
+- **GPU 分工照旧**：VLM 落 GPU 1（`VLM_GPU` 可改，单卡机器自动落 GPU 0）；模型冷加载等最多 `--vlm-timeout`（默认 300 s，8B 4-bit 冷启动 1–3 分钟是正常的）。
+- **OpenHarness 侧零配置**：端点+模型名写进 `.kaggle/env.sh` 的受管块（`OPENHARNESS_MINICPM_BASE_URL` / `_MODEL`），`source .kaggle/env.sh` 后 `vlm_qa` / `minicpm_vlm` 工具直接可用。
+- 21 条桩断言进 kaggle 套件（177 检查）：GPU 钉卡、GGUF 传参、就绪轮询、复用不重拉、env.sh 幂等、`--stop-vlm` 收干净、无启动器时诚实的 exit 2 + 提示、`--openharness` 无 pyproject 拒绝。
+
 ## setup.sh：探针，不是假设
 
 `tools/kaggle/setup.sh [--no-persist] [--force-browser]` 每一步用的都是 HyperFrames 0.8.82 自己会做的同一个探测，所以**这里探不过的，渲染时也不会突然能用**；探过的才写进 `.kaggle/env.sh`：
