@@ -170,6 +170,8 @@ A few rules never relax ([CLAUDE.md](CLAUDE.md) has them all): every frame depen
 | 08 Meme edits | Brutalist, tech-Twitter quick cuts | HyperFrames | [08](video-types/08-brutalist-meme.md) |
 | 09 Edits of your own footage (experimental) | Talking heads and interviews: cut filler, add captions and graphics, make a vertical version | HyperFrames | [09](video-types/09-editing-talking-head.md) |
 
+The math engine has its own guide: [engines/manimgx.md](engines/manimgx.md) (in Chinese) — when to use it, its limits, how it picks a GPU (Kaggle T4×2 included), when to fall back to Manim CE, and a Kaggle troubleshooting table; the speed measurements and optimization research behind it are in [engines/manimgx-advanced.md](engines/manimgx-advanced.md).
+
 For realistic people or physics, combine generated video with code on top ([playbook/05](playbook/05-hybrid-genvideo.md)); for a story with an arc or anything over three minutes, [playbook/09](playbook/09-narrative.md); for opening hooks, titles and covers, [playbook/10](playbook/10-hooks-and-packaging.md).
 
 **Styles.** Left alone, AI video drifts toward one look: dark background, glow, glass cards. [`styles/`](styles/) holds 31 styles distilled from well-known work, among them Saul Bass title sequences, the Swiss grid, 3Blue1Brown, New York Times graphics, the halftone of *Spider-Verse*, Wes Anderson's symmetry, ink wash, Dunhuang murals, shadow puppetry and guochao. Each describes its colors, type, composition, motion, transitions and sound, and each was rendered as a 5-second sample of the same content:
@@ -184,7 +186,7 @@ Some shots are beyond a web engine: refracting glass, volumetric light, real dep
 
 <p align="center"><img src="docs/assets/blender-strip.jpg" width="820" alt="Moments from the intro film's opening, all rendered in Blender: the Earth in a glass card, the pull-back to a galaxy, the burst, the flattened sea of films"></p>
 
-The intro film's opening was made this way: a galaxy of 1.18 million stars, 15.8 s and 475 frames, 1 h 28 min at 1080p on an M3 Max. The scripts run sandboxed, with no network and no access to your API keys, and long renders go in resumable chunks. When Blender is worth it, how to join it to a film and what went wrong along the way: [engines/blender.md](engines/blender.md) (in Chinese).
+The intro film's opening was made this way: a galaxy of 1.18 million stars, 15.8 s and 475 frames, 1 h 28 min at 1080p on an M3 Max. The scripts run sandboxed, with no network and no access to your API keys, and long renders go in resumable chunks. When Blender is worth it, how to join it to a film and what went wrong along the way: [engines/blender.md](engines/blender.md) (in Chinese). For the exploration phase there is also an MCP path — `blender-mcp-ultra`, 248 tools, token-authenticated and AST-guarded, kept out of the pipeline by rule: [engines/blender-mcp-ultra.md](engines/blender-mcp-ultra.md) (in Chinese), one-command setup and proof: `tools/blender_mcp_setup.sh`. The Cycles speed/quality profiles (draft / final / final-cpu) and the Kaggle 2x T4 GPU split (CUDA first; ManimGX takes GPU 0, Blender pins GPU 1) live in [engines/blender-perf.md](engines/blender-perf.md) (in Chinese, verified live against Blender 5.2.2), with `tools/blender_perf.py`, `tools/blender_run.sh` and `tools/blender_bench.sh`.
 
 ## Sound
 

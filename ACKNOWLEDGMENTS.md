@@ -76,6 +76,7 @@ This project is independent. It is not affiliated with or endorsed by Anthropic,
 | [auto-editor](https://github.com/WyattBlue/auto-editor) | WyattBlue | Unlicense | Silence cutting and export to several editors |
 | [capcut-cli](https://github.com/renezander030/capcut-cli), [pyJianYingDraft](https://github.com/GuanYixuan/pyJianYingDraft) | renezander030, GuanYixuan | MIT, Apache-2.0 | The CapCut and JianYing draft formats and the encryption since JianYing 6.0 (documentation only) |
 | [fcp-mcp-server](https://github.com/DareDev256/fcp-mcp-server) | DareDev256 | MIT | Rational frame rates in FCPXML (`fcpxml/rational.py`) |
+| [blender-mcp](https://github.com/carlosh7/blender-mcp) | carlosh7 | MIT | The blender-mcp-ultra MCP server (248 tools, token auth, AST guard) recommended for the Blender engine's exploration phase (`engines/blender-mcp-ultra.md`) |
 
 ## Research
 

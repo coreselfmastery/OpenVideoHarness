@@ -170,6 +170,8 @@ cd ~/OpenVideoHarness && claude
 | 08 梗图快剪 | 野兽派、科技推特风 | HyperFrames | [08](video-types/08-brutalist-meme.md) |
 | 09 剪你自己的素材（试验中） | 口播、访谈：删口水词、加字幕和图解、出竖屏版 | HyperFrames | [09](video-types/09-editing-talking-head.md) |
 
+数学引擎有自己的完整指南：[engines/manimgx.md](engines/manimgx.md)——什么时候用、限制、怎么选 GPU（含 Kaggle T4×2）、什么时候回退 Manim CE、Kaggle 排障表；速度实测与优化研究（缓存、异步、多进程）在 [engines/manimgx-advanced.md](engines/manimgx-advanced.md)。
+
 要写实人物或真实物理时，接生成式视频再用代码叠加（[playbook/05](playbook/05-hybrid-genvideo.md)）；讲有起伏的故事或 3 分钟以上的长片看 [playbook/09](playbook/09-narrative.md)；开头钩子、标题和封面看 [playbook/10](playbook/10-hooks-and-packaging.md)。
 
 **风格。** AI 做的视频很容易长成一个样子：暗底、发光、玻璃卡片。所以 [`styles/`](styles/) 收了 31 种从名作里提炼的风格：Saul Bass 的片头、瑞士网格、3Blue1Brown、《纽约时报》的数据图、《蜘蛛侠：平行宇宙》的网点、韦斯·安德森的对称构图、水墨、敦煌、皮影、国潮等。每种都写清颜色、字体、构图、运动、转场和声音，并用同一段内容实际渲染了一段 5 秒样片，差别只在风格：
@@ -184,7 +186,7 @@ cd ~/OpenVideoHarness && claude
 
 <p align="center"><img src="docs/assets/blender-strip.jpg" width="820" alt="介绍片开场的几个时刻：玻璃卡片里的地球、拉远成星系、爆开、压平成影片之海，都是 Blender 渲的"></p>
 
-介绍片的开场就是这样做的：118 万颗星组成一个星系，15.8 秒、475 帧，1080p 在 M3 Max 上渲了 1 小时 28 分。脚本在沙箱里跑，不联网，也拿不到你的 API key；长渲染分块、可以续渲。什么时候值得用、怎么接进片子、踩过哪些坑，见 [engines/blender.md](engines/blender.md)。
+介绍片的开场就是这样做的：118 万颗星组成一个星系，15.8 秒、475 帧，1080p 在 M3 Max 上渲了 1 小时 28 分。脚本在沙箱里跑，不联网，也拿不到你的 API key；长渲染分块、可以续渲。什么时候值得用、怎么接进片子、踩过哪些坑，见 [engines/blender.md](engines/blender.md)。探索阶段另有 MCP 一条路：`blender-mcp-ultra`（248 个工具、强制 token、AST 拦截，按规矩不进管线），见 [engines/blender-mcp-ultra.md](engines/blender-mcp-ultra.md)；一条命令装好并验证：`tools/blender_mcp_setup.sh`。 Cycles 的三档速度/画质画像（draft/final/final-cpu）与 Kaggle 2×T4 的 GPU 分工（CUDA 优先；ManimGX 用 GPU 0，Blender 绑 GPU 1）见 [engines/blender-perf.md](engines/blender-perf.md)（对着 Blender 5.2.2 逐项实测）；配套 `tools/blender_perf.py` / `tools/blender_run.sh` / `tools/blender_bench.sh`。
 
 ## 声音
 

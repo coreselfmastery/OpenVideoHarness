@@ -3,6 +3,7 @@ out/
 !tools/desk/fixtures/*/out/
 renders/
 .venv/
+uv.lock
 references/repos/
 .DS_Store
 *.env
@@ -44,3 +45,5 @@ docs/site/media/
 showcase/*/scenes/*.mp4
 showcase/*/scenes/*.storyboard*.png
 showcase/*/scenes/*.storyboard.png
+# tools/manimgx_render.sh keeps its cache manifest beside the video (engines/manimgx-advanced.md › H2)
+showcase/*/scenes/*.render.json

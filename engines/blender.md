@@ -6,13 +6,13 @@
 
 ## 要点
 
-1. **路线**：`blender -b` 两段式：`build`（`timeline.json` → `scene.blend`）和 `render`（`scene.blend` → PNG 序列）。合成走 HyperFrames 或 ffmpeg。MCP 只在探索阶段用，不进管线，而且要在沙箱里用。
+1. **路线**：`blender -b` 两段式：`build`（`timeline.json` → `scene.blend`）和 `render`（`scene.blend` → PNG 序列）。合成走 HyperFrames 或 ffmpeg。MCP 只在探索阶段用，不进管线，而且要在沙箱里用；要用 MCP 就用 `blender-mcp-ultra`（248 个工具、强制 token、AST 双侧拦截，见 [`blender-mcp-ultra.md`](blender-mcp-ultra.md)）。
 2. **版本**：固定 **5.2 LTS**（2026-07-14 发布，维护到 2028-07）[1][2]。5.0 起只支持 Apple Silicon，macOS ≥ 13 [3]，Python API 有破坏性改动，凭 2.8–4.x 的记忆写的脚本多半会报错。
-3. **引擎分工**：分镜和 draft 用 EEVEE（或 Workbench），final 用 Cycles（Metal）加 OIDN，风格化镜头可以直接 EEVEE final。
+3. **引擎分工**：分镜和 draft 用 EEVEE（或 Workbench），final 用 Cycles（Metal）加 OIDN，风格化镜头可以直接 EEVEE final。Cycles 的速度与画质设置自 2026-10-18 起由性能层统一给出：三档画像（draft / final / final-cpu），见 [`blender-perf.md`](blender-perf.md)。
 4. **确定性**：只承诺"同一台机器、同一 Blender 构建、同一设置"下，按硬规则 1 的口径（无损 PNG，PSNR ≥ 45 dB）乱序渲染一致。渲好的 PNG 序列是带哈希的素材，合成时不重渲。
 5. **纯函数**：时间线用我们自己的缓动、样条和节拍函数，逐帧采样成关键帧；不用 Python handler，不靠实时模拟。
 6. **合成与颜色**：默认交 PNG（straight alpha，视图变换已烘进去）；EXR 是 scene-linear，进 ffmpeg 要显式 `-apply_trc iec61966_2_1`；最后一步 H.264 要写 BT.709 矩阵和四个标签，否则饱和色偏 20 个色阶左右。
-7. **安全**：官方 MCP 自己警告，它会直接执行 LLM 生成的代码，没有任何防护 [16]。**没有沙箱，就不要让 LLM 生成的 bpy 代码经过任何 MCP 执行**；管线里跑 agent 写的脚本同理。
+7. **安全**：官方 MCP 和 ahujasid 版都会直接执行 LLM 生成的代码，没有任何防护 [16]。`blender-mcp-ultra` 是唯一带防护的（强制 token + AST 双侧拦截，实测过），但 LLM 代码在 Blender 里执行这个本质没变：**没有沙箱，就不要让 LLM 生成的 bpy 代码经过任何 MCP 执行**；管线里跑 agent 写的脚本同理。
 8. **许可**：输出归自己，但公开发布的、调用 bpy 的脚本要以 GPL 兼容协议发布 [17]。本仓库的做法（维护者 2026-10-01 决定）：import bpy 的文件标 `SPDX-License-Identifier: GPL-3.0-or-later`，按 GPL 分发，其余仍是 MIT（见"许可证"）。
 
 ## 什么时候用 Blender
@@ -97,7 +97,7 @@ projects/<date>-<slug>/blender/
 
 ### 渲染预设与 render 命令
 
-预设的数值是起点，全部【推测】，以 5 帧校准为准：
+预设的数值是起点，全部【推测】，以 5 帧校准为准（校准现在有工具：`tools/blender_bench.sh`；Cycles 侧的设置矩阵与三档画像 draft/final/final-cpu 见 [`blender-perf.md`](blender-perf.md)，含 Kaggle 2×T4 的 GPU 分工：ManimGX 用 GPU 0，Blender 绑 GPU 1）：
 
 | 预设 | 引擎 | 关键设置 | 用途 |
 |---|---|---|---|
@@ -152,8 +152,8 @@ render 要带看门狗（沿用 `playbook/02` 的做法）、检查退出码、�
 
 | 来源 | 影响 | 对策 |
 |---|---|---|
-| Cycles `Time Limit` | 到时限就停，哪怕没到目标采样数 [6]，结果随机器速度变化 | 固定为 0（关） |
-| 自适应采样 | 像素是否停止取决于噪声估计；同设备是否逐位一致【推测：没找到官方说法】 | final 预设默认关自适应，固定 spp；要开就先做下面的验收 |
+| Cycles `Time Limit` | 到时限就停，哪怕没到目标采样数 [6]，结果随机器速度变化 | 锚（final-cpu）仍固定为 0；final 的 600 s 只是保险丝，跨机复现用 final-cpu（[`blender-perf.md`](blender-perf.md)“哪个设置拿走了确定性”） |
+| 自适应采样 | 像素是否停止取决于噪声估计；同机同设置逐位一致（实测 5.2.2：tabletop 第 30 帧单独渲 vs 顺序渲 PSNR=inf），跨机不同 | final-cpu 关（锚）；final/draft 开（同机逐位一致，跨机复现用 final-cpu，[`blender-perf.md`](blender-perf.md)） |
 | 设备 | 同一场景在 CPU、CUDA、OptiX 上渲出的像素不同（#101561）；Cycles 开发者回复：设备之间总会有差异，不算 bug，归因于硬件精度差异 [12] | 一个项目只用一种设备（Metal），不用 `METAL+CPU` |
 | OIDN 降噪 | 官方文档称不同设备之间可能有小的数值差异；RT 滤波器不具备时间稳定性 [10] | final 用默认（高质量）模式；降噪是逐帧的，可能闪 |
 | 版本 | 5.2 EEVEE 输出与 5.1 不同 [4] | `blender.lock` 钉死 |
@@ -211,10 +211,11 @@ ffprobe -v error -select_streams v:0 -show_entries stream=pix_fmt,color_range,co
 
 ## 安全：MCP 与 LLM 生成的 bpy
 
-**默认关。** 用 Blender MCP 之前先问用户，而且只在虚拟机或单独的 macOS 用户下用。MCP 会话本身不可复现，不算产物：每次会话结束，把确认有用的操作固化成 `build.py`。
+**默认关。** 用 Blender MCP 之前先问用户，而且只在虚拟机或单独的 macOS 用户下用。MCP 会话本身不可复现，不算产物：每次会话结束，把确认有用的操作固化成 `build.py`。三个 MCP 里只推荐 `blender-mcp-ultra`，专页在 [`blender-mcp-ultra.md`](blender-mcp-ultra.md)（248 个工具、安全模型、headless 配方、探索工作流，全部实测过）。
 
+- **`carlosh7/blender-mcp`（blender-mcp-ultra，MIT，本仓库 2026-10-18 起的推荐）**：248 个带类型签名的工具（7 基础 + 241 registry），网关不依赖 Blender 开着就全部注册。安全机制且都实测过：localhost-only socket + **强制 token**（错误/缺失都被拒）；**AST 拦截在网关和 addon 各跑一次**（`import os`、`open()`、`import subprocess` 全被拦——`execute_code` 通道做不了文件 I/O、起不了进程）；REST 限速 30 req/min + 1 MB body；10 s 超时 + 自动 undo。作者有公开的自审计史（无认证 LAN RCE 自己发现自己修，`AUDIT_REPORT.md`）[16a]。它支持 headless（官方 CI 的跑法，配在本仓库 Kaggle 场景也成立）。不覆盖的：registry 工具按设计要写文件（filepath 参数没有白名单）、间接提示注入、bpy 本身的破坏力——所以隔离环境的老规矩照旧。
 - **官方 MCP**（Blender Lab，`projects.blender.org/lab/blender_mcp`，GPL-3.0；v1.0.3 于 2026-09-11，要求 Blender 5.1+）：页面明确警告，服务器会直接执行 LLM 生成的代码，没有任何措施防止数据被删除或外发，建议用虚拟机或不含敏感信息的系统（2026-10-01 对着页面核对）[16]。开发者论坛的讨论里，官方仓库只附了一个承认不足以当安全边界的 `weak_sandbox.py` [16]。
-- **社区 `ahujasid/mcp-for-blender`**（原名 `blender-mcp`，MIT，约 2.98 万星）：`execute_blender_code` 用 `exec()` 执行任意 Python；通过一个无认证、无加密的本地 TCP socket 通信；已有 CVE（CVE-2026-10661，评分低，`input_image_url` 注入）；新版有 `BLENDER_MCP_SAFE_MODE=1`，拦截文件读写、网络、起子进程、持久化代码 [16]。它集成的 Poly Haven（CC0）、Sketchfab、Poly Pizza（约 69% 是 CC-BY，需署名）等素材源，每一项都要进素材台账。
+- **社区 `ahujasid/mcp-for-blender`**（原名 `blender-mcp`，MIT，约 2.98 万星）：`execute_blender_code` 用 `exec()` 执行任意 Python；通过一个无认证、无加密的本地 TCP socket 通信；已有 CVE（CVE-2026-10661，评分低，`input_image_url` 注入）；新版有 `BLENDER_MCP_SAFE_MODE=1`，拦截文件读写、网络、起子进程、持久化代码 [16]。它集成的 Poly Haven（CC0）、Sketchfab、Poly Pizza（约 69% 是 CC-BY，需署名）等素材源，每一项都要进素材台账（ultra 的 PolyHaven/AmbientCG/Sketchfab 集成同理）。
 - **威胁面**：模型自己写出破坏性代码；间接提示注入（`.blend` 里的对象名、文本块、网页素材都能带指令）；`.blend` 里的自动执行脚本（Python 驱动器、启动脚本），命令行默认 `-Y` 禁用，不要加 `-y` [5]。
 
 **管线里跑 agent 写的 `build.py`**：① 静态检查：AST 扫描，禁 `os`、`subprocess`、`socket`、`urllib`、`shutil`、`eval/exec`、`__import__`，`open` 只许写输出目录；② `--factory-startup`、不加 `-y`；③ 套 `sandbox-exec` 和 `env -i`（下）。第三方 `.blend` 和素材当不可信输入：先 `--disable-autoexec`（默认已是）打开，扫描文本块和驱动器再用。要联网取素材，单独做一步，显式 URL、记来源和许可，不在渲染进程里取。
@@ -340,6 +341,7 @@ sandbox-exec -f vh_blender.sb env -i PATH="$PATH" HOME="$PWD/blender/out/.home" 
 - [14] 刚体：`bpy.ops.rigidbody.bake_to_keyframes` https://docs.blender.org/api/current/bpy.ops.rigidbody.html ；渲染农场与刚体烘焙 https://www.renderjuice.com/docs/rendering-with-blender/rigid-body-simulations 【二手】。
 - [15] Shadow Catcher：手册（Cycles 物体设置）rst 原文 https://projects.blender.org/blender/blender-manual/raw/branch/main/manual/render/cycles/object_settings/object_data.rst 。
 - [16] MCP：官方页面 https://www.blender.org/lab/mcp-server/ （2026-10-01 核对警告原文和 5.1+ 要求）；安全讨论 https://devtalk.blender.org/t/blender-mcp-server-after-claude-mcp-security-for-blender-scripting-3d-agent-notes/45131 ；社区实现 https://github.com/ahujasid/mcp-for-blender （原名 blender-mcp，旧链接会跳转；MIT）；CVE-2026-10661 https://github.com/advisories/GHSA-qqw9-95ww-prfm （2026-10-01 核对：低危，2026-06-03 发布）；官方仓库元数据与 release：https://projects.blender.org/api/v1/repos/lab/blender_mcp 及 `/releases`（2026-10-01 核对：GPL-3.0，v1.0.3 于 2026-09-11）。
+- [16a] blender-mcp-ultra：仓库 https://github.com/carlosh7/blender-mcp ；PyPI https://pypi.org/pypi/blender-mcp-ultra/ （3.2.0，MIT，Python ≥ 3.10，Blender 4.2+/5.x）；安全与 E2E 实测记录、headless 配方、248 工具清单见 [`blender-mcp-ultra.md`](blender-mcp-ultra.md)（2026-10-18，Linux headless + Blender 5.2.2 + 网关 3.2.0）。
 - [17] 许可：https://www.blender.org/about/license/ ；FAQ https://www.blender.org/about/faq/ （2026-10-01 核对输出归属、脚本须按 GPL 或符合 GPL 的协议提供、Blender 之外的闭源工具）。
 - [18] Homebrew cask https://formulae.brew.sh/api/cask/blender.json （2026-10-01 核对：5.2.2）；PyPI `bpy` https://pypi.org/simple/bpy/ 。
 - [19] Khronos PBR Neutral：4.2 release notes https://developer.blender.org/docs/release_notes/4.2/rendering/ ；设计讨论 https://devtalk.blender.org/t/adding-pbr-neutral-tone-mapper/33602 ；AgX、Standard、PBR Neutral 的差别见手册 [7]。
