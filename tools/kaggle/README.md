@@ -163,6 +163,14 @@ HyperFrames 的 `--output-resolution` 只会**向上**超采样（1080p、4K）�
 
 `--dry-run` 打印切点和两条半支命令不画一格；`--keep` 保留两半和日志；Ctrl-C（或 Kaggle 的 Interrupt）无论落在哪个阶段都带走该阶段的一切、一个文件都不留——落在确定性门上就带走门自己的浏览器（门在后台跑着，停止陷阱才够得着它），落在两半上就经 `exec node` 直达 render.mjs 的停止清理，各自删掉自己的分块。
 
+## monitor.sh：整台机器一眼看尽（GPU/CPU/RAM/磁盘）
+
+`tools/kaggle/monitor.sh [--once] [--watch N] [--json] [--log FILE] [--no-cpu-sample]`
+
+渲染时另开一格跑它，看的就是"没浪费机器钱"这件事：两块 T4 各自的利用率/显存/温度/功耗、**哪支进程占着哪张卡**（blender? chrome? manimgx?）、CPU 核数与负载、RAM 余量、以及最要命的 `/kaggle/working` 磁盘余量——渲染会在磁盘写满时停，而 12 小时会话上限把剩下的一切都带走。健康的样子（GPU 分工表）：Blender split 时两行都近 100%；网页片渲染时 GPU 0（Chrome）忙、GPU 1 在 NVENC 编码瞬间脉冲；CPU 负载明显低于核数说明浏览器没饿着。
+
+`--watch 5`（默认 5 s 一照）每照整印——不用屏幕刷新技巧，Kaggle 笔记本单元格里照样读；`--json` 出 JSONL（和人类表同字段）；`--log FILE` 把每一照追加成 JSONL（配 `--watch` 用，事后画图/写 NOTES.md）；`--no-cpu-sample` 跳过算 CPU 忙闲百分比的 1 秒采样，一照只要毫秒。桩验证 10 项断言（表、JSON 有效性、日志追加、拒绝路径、无 nvidia-smi 时仍 0 退出并说明原因）。
+
 ## 提速清单的落地情况
 
 对照 HyperFrames 自己的调优表，在这套里各自落在哪：
@@ -224,6 +232,6 @@ HyperFrames 的 `--output-resolution` 只会**向上**超采样（1080p、4K）�
 
 `tools/kaggle/test.sh`（`tools/ci.sh` 自动跑它）用**桩**验证 setup.sh 的每个探针、ffmpeg 包装器的 tier 重调（引擎真实参数形状的 12 种情况）、render.sh 的全部决定和错误路径、render-split 的计划数字；有 Chrome 的机器上再跑**真**的 32 s 切分渲染：determinism 门、两半并行、三重拼接校验、sidecar 落点、打断后一个文件都不留。
 
-现在这一套还用桩钉住：render.sh **出片后的 held 回读卡**（要了 NVENC 文件却是 libx264、要 30 fps 文件却是 60——每个分支都驱动到）、`--fps 30 默认`（声明 60 → 渲 30，`--fps 60` 覆盖）、帧提取缓存落位、`render.mjs`/`render-split.sh` 的 `--res` 护栏（升采样拒、0.25 地板拒、`--dpr` 互斥）、lambda.sh 的参数映射与全部拒绝（桩引擎 + 桩 AWS 工具）。有 Chrome 的机器再跑**真**的：同一页面连烘两次必须同图（本平台参照，见 bake 一节的平台诚实条款）、双胞胎片子互 PSNR ≥ 40 dB（带本平台刚烘的 scene）、`--res` 档真的出 480×270，以及 **render.sh 过真引擎**的端到端（引擎自己的横幅说 30fps · draft · 1 workers，held 卡把真片子读回来对账）。共 **140 项**断言，全部绿才许过。
+现在这一套还用桩钉住：render.sh **出片后的 held 回读卡**（要了 NVENC 文件却是 libx264、要 30 fps 文件却是 60——每个分支都驱动到）、`--fps 30 默认`（声明 60 → 渲 30，`--fps 60` 覆盖）、帧提取缓存落位、`render.mjs`/`render-split.sh` 的 `--res` 护栏（升采样拒、0.25 地板拒、`--dpr` 互斥）、lambda.sh 的参数映射与全部拒绝（桩引擎 + 桩 AWS 工具）、**monitor.sh 整机一照**（两卡计数、每卡一行、持卡进程行、JSON 有效性、日志追加、拒绝路径、无 nvidia-smi 时的诚实降级）。有 Chrome 的机器再跑**真**的：同一页面连烘两次必须同图（本平台参照，见 bake 一节的平台诚实条款）、双胞胎片子互 PSNR ≥ 40 dB（带本平台刚烘的 scene）、`--res` 档真的出 480×270，以及 **render.sh 过真引擎**的端到端（引擎自己的横幅说 30fps · draft · 1 workers，held 卡把真片子读回来对账）。共 **150 项**断言，全部绿才许过。
 
 三个真渲染段（切分 E2E、bake 三件套、引擎 E2E）各带**时间预算**（600 / 240 / 480 秒，环境变量可覆盖）：租来的 CI 主机可能卡死（Chrome 不应答就把等待挂到天荒地老），预算把「慢/卡」变成一句诚实的 skip——`run 39127448500` 的 macOS 任务静默耗完最后 31 分钟，正是因为 bake 段的注释写了「同样有预算」而下面其实什么都没有。三项预算全触发的最坏情形 ≈ 25 分钟，加上前面 ~9 分钟的影片工具组，落在 40 分钟的天花板内。

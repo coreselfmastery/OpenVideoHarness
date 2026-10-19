@@ -44,11 +44,19 @@ EOF
 chmod +x "$BIN/ffmpeg"
 ln -s "$BIN/ffmpeg" "$BIN/ffprobe"
 
-# nvidia-smi: two Tesla T4s, like the Kaggle box
+# nvidia-smi: two Tesla T4s, like the Kaggle box (-L listing for setup.sh;
+# --query-gpu/--query-compute-apps CSV for monitor.sh)
 cat > "$BIN/nvidia-smi" <<'EOF'
 #!/usr/bin/env bash
-echo "GPU 0: Tesla T4 (UUID: GPU-stub-0000)"
-echo "GPU 1: Tesla T4 (UUID: GPU-stub-0001)"
+case "$1" in
+  --query-gpu*)
+    printf '0, Tesla T4, 97, 14336, 15360, 62, 68\n1, Tesla T4, 4, 2048, 15360, 41, 22\n' ;;
+  --query-compute-apps*)
+    printf '4242, blender, 12000\n4243, chrome, 1800\n' ;;
+  *)
+    echo "GPU 0: Tesla T4 (UUID: GPU-stub-0000)"
+    echo "GPU 1: Tesla T4 (UUID: GPU-stub-0001)" ;;
+esac
 EOF
 chmod +x "$BIN/nvidia-smi"
 
@@ -432,6 +440,33 @@ OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$P"
 [ "$rc" != 0 ] && ok "a bogus tier is refused" || bad "a bogus tier was accepted"
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$WORK/no-such-project" --dry-run 2>&1); rc=$?
 [ "$rc" != 0 ] && ok "no project: refused" || bad "a missing project was split"
+
+# --- monitor.sh: the whole-box glance (GPUs, card holders, CPU, RAM, disk) ------------------
+cp "$ROOT/tools/kaggle/monitor.sh" "$TESTROOT/tools/kaggle/"
+MLOG="$WORK/monitor.jsonl"
+OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/monitor.sh --once --no-cpu-sample 2>&1); rc=$?
+[ "$rc" = 0 ] && ok "monitor: one snapshot exits 0" || bad "monitor --once rc=$rc"
+echo "$OUT" | grep -q " 2 GPU(s) " && ok "monitor: both stub T4s counted" || bad "monitor GPU count: $(echo "$OUT" | head -1)"
+echo "$OUT" | grep -q "GPU0" && echo "$OUT" | grep -q "GPU1" && ok "monitor: one row per card" || bad "monitor rows missing: $(echo "$OUT" | sed -n 2,3p)"
+echo "$OUT" | grep -q "card holders: pid 4242 blender" && ok "monitor: the card-holder line names who holds what" || bad "no card holders: $(echo "$OUT" | grep holders)"
+echo "$OUT" | grep -q "disk .* of .* (/" && ok "monitor: the disk line names the working dir" || bad "no disk line: $(echo "$OUT" | head -1)"
+OUTJ=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/monitor.sh --json --no-cpu-sample 2>&1)
+if command -v python3 >/dev/null 2>&1; then
+  echo "$OUTJ" | python3 -c 'import json,sys; d=json.loads(sys.stdin.read()); assert len(d["gpus"])==2 and d["gpus"][0]["util"]==97; assert d["gpu_procs"][0]["pid"]==4242; print()' \
+    && ok "monitor: --json is one valid JSON object with the same fields" || bad "monitor json: $OUTJ"
+else
+  echo "$OUTJ" | grep -q '"gpus":\[{"i":0,"util":97' && ok "monitor: --json carries the GPU fields" || bad "monitor json: $OUTJ"
+fi
+(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/monitor.sh --once --no-cpu-sample --log "$MLOG") >/dev/null 2>&1
+(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/monitor.sh --once --no-cpu-sample --log "$MLOG") >/dev/null 2>&1
+[ "$(wc -l <"$MLOG" 2>/dev/null)" = 2 ] && ok "monitor: --log appends (two snapshots, two JSONL lines)" || bad "monitor log lines: $(wc -l <"$MLOG" 2>/dev/null)"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/monitor.sh --watch 1 --no-cpu-sample) >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "monitor: --watch 1 refused (min 2 s)" || bad "monitor --watch 1 rc=$rc"
+(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/monitor.sh --bogus) >/dev/null 2>&1; rc=$?
+[ "$rc" = 2 ] && ok "monitor: unknown option refused" || bad "monitor --bogus rc=$rc"
+OUT=$(cd "$TESTROOT" && PATH="/usr/bin:/bin" bash tools/kaggle/monitor.sh --once --no-cpu-sample 2>&1); rc=$?
+[ "$rc" = 0 ] && echo "$OUT" | grep -q "no nvidia-smi on PATH" && ok "monitor: no GPU tool still exits 0 and says why" || bad "no-smi path: rc=$rc [$OUT]"
+
 PMID="$WORK/proj-mid"; mkproj "$PMID" 400 "" '<div>no scene cuts declared here</div>'
 OUT=$(cd "$TESTROOT" && PATH="$BIN:$PATH" bash tools/kaggle/render-split.sh "$PMID" --dry-run 2>&1)
 echo "$OUT" | grep -q "cut      : frame 6000 (t=200.000 s)" && ok "no data-starts: the exact midpoint, still on a frame" || bad "midpoint cut wrong: $(echo "$OUT" | grep 'cut')"

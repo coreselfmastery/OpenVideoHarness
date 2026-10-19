@@ -88,6 +88,21 @@
 
 Cycles 的采样式运动模糊（`render.use_motion_blur`）让每样本按快门多追光线，重场景上是一项真金白银的开销【源码：属性名 API 稳定自 2.5x；`check`/`report` 现在读它并提示，不强制】。它不在任何 profile 里被自动关——快门是创作选择，性能层只负责提醒：`blender_perf.py` 的 `apply`/`check` 现在会在开着时打印一行 advisory（合成器 vector blur / 缩短快门是近乎免费的替代）。真需要高质量 MB 的镜头就付这个钱，不需要的镜头用它换帧。
 
+## 与 OpenHarness 的桥（render_engines.json + review 别名）
+
+OpenHarness 的 RenderQueue（`render_pipeline.py`）按**引擎模板**起渲染命令，模板可用项目根的 `render_engines.json` 覆盖——这就是机器（OpenHarness）接到方法（本仓库）上的钩子。模板占位符里现在有 `{tier}`（OpenHarness 的 draft/review/final 档名直传），配合 blender_perf 的 `review` 别名（→ draft 画像），三档正好对上：draft→draft、review→draft、final→final。Blender 场景放进 OpenHarness 项目时，`render_engines.json` 写成：
+
+```json
+{
+  "blender": [
+    "tools/blender_run.sh", "--profile", "{tier}", "--",
+    "blender", "-b", "{scene}", "-o", "{output_stem}", "-a"
+  ]
+}
+```
+
+不用 `--gpu`：RenderQueue 的 worker 已用 `CUDA_VISIBLE_DEVICES` 把每支 Blender 进程钉在各自的卡上（容器里只见一张卡 = 不传 --gpu 的单卡 Cycles，正是确定性合同要的"一帧一张卡"）。完整的接线图（哪些阶段归 OpenHarness 的哪些工具）在 OpenHarness 侧的 `docs/VIDEO_HARNESS.md`；两卡同时渲一支序列仍走 `blender_split.sh`（上一节）。
+
 ## 工具
 
 | 命令 | 用途 |
