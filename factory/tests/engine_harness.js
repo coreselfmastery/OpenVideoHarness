@@ -83,7 +83,7 @@ const code = fs.readFileSync(path.join(root, "engine-core.js"), "utf8") +
   const dur = f.duration;
   console.log(`boot OK · duration ${dur.toFixed(2)}s · ${f.covers.length} covers · ${f.chapters.length} chapters`);
   if (!(dur > 100)) fail(`duration ${dur} suspiciously short`);
-  if (dur > 130) fail(`duration ${dur} suspiciously long`);
+  if (dur > 660) fail(`duration ${dur} suspiciously long`); // raised for the 10-minute masters (600 s by design)
   for (const c of f.chapters) if (String(c.title) === "[object Object]") fail("chapter title is an object");
 
   // frame at: every 0.5 s + all cut boundaries ± 1 frame + the very ends
