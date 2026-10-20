@@ -53,8 +53,8 @@ while [ $# -gt 0 ]; do case "$1" in
   -h|--help) sed -n '2,37p' "$0"; exit 0 ;;
   *) echo "unknown option: $1 (try --help)"; exit 1 ;;
 esac; done
-c_ok=$'\033✓\033'; c_no=$'\033✗\033'; c_wa=$'\033!\033'
-say() { printf '\033→ %s\033\n' "$*"; }
+c_ok=$'\033[32m✓\033[0m'; c_no=$'\033[31m✗\033[0m'; c_wa=$'\033[33m!\033[0m'
+say() { printf '\033[36m→\033[0m %s\n' "$*"; }
 ok()  { printf '%s %s\n' "$c_ok" "$*"; }
 no()  { printf '%s %s\n' "$c_no" "$*"; }
 warn() { printf '%s %s\n' "$c_wa" "$*"; }
@@ -100,7 +100,7 @@ if [ -n "$OH_PATH" ]; then
     else
       python3 -m pip install -q -e "$OH_PATH" || { no "pip install failed"; exit 1; }
     fi
-    ok "openharness importable: $(python3 -c 'import openharness; print(openharness.__file__)' 2>/dev/null || echo 'verify with: python3 -c \"import openharness\"')"
+    ok "openharness importable: $(python3 -c 'import openharness; print(openharness.__file__)' 2>/dev/null || echo 'verify with: python3 -c "import openharness"')"
   else
     no "--openharness path has no pyproject.toml: $OH_PATH"
     exit 1

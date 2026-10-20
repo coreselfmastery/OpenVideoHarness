@@ -10,7 +10,9 @@
 #   tools/kaggle/render-split.sh <project> [options]     <project>: the folder with index.html
 #
 #   --at SECONDS        split at this time instead of the middle: snapped to the nearest scene cut within half a second
-#   --tier draft|final  the encode: draft = NVENC p4 cq 28 (x264: crf 28, faster) — a review pass; final = NVENC p7
+#   --tier beast|draft|review|final  the encode: draft = NVENC p4 cq 28 (x264: crf 28, faster) — a review pass;
+#                       review = NVENC p5 cq 23 (x264: crf 20, fast); beast = the one-tier ship grade, NVENC p5 cq 21
+#                       (x264: veryfast, crf 20) — what render.mjs --tier beast encodes, on both cards; final = NVENC p7
 #                       cq 19 (x264: crf 16, medium) — the master. No --tier: the repo's own master settings
 #                       (NVENC p4 cq 16 / x264 crf 16 medium)
 #   --res 480p|720p…    the output's short side in lines (480, 540, 720, 1080): the page keeps its own layout,
@@ -56,7 +58,7 @@ SKIP_DET=0; DRY=0; KEEP=0; pass=()
 while [ $# -gt 0 ]; do
   case "$1" in
     --at) AT=${2:?--at needs seconds}; shift ;;
-    --tier) TIER=${2:?--tier needs draft or final}; shift ;;
+    --tier) TIER=${2:?--tier needs beast, draft or final}; shift ;;
     --tier=*) TIER=${1#*=} ;;
     --encoder) ENCODER=${2:?--encoder needs x264 or nvenc}; shift ;;
     --encoder=*) ENCODER=${1#*=} ;;
@@ -81,7 +83,7 @@ while [ $# -gt 0 ]; do
   esac
   shift
 done
-case "$TIER" in draft|final|"") ;; *) printf '\033[31m✗\033[0m --tier: draft or final, not "%s"\n' "$TIER" >&2; exit 1 ;; esac
+case "$TIER" in beast|draft|review|final|"") ;; *) printf '\033[31m✗\033[0m --tier: beast, draft, review or final, not "%s"\n' "$TIER" >&2; exit 1 ;; esac
 case "$WORKERS" in ''|*[!0-9]*|0) printf '\033[31m✗\033[0m --workers: a whole number ≥ 1\n' >&2; exit 1 ;; esac
 R=""
 if [ -n "${RES:-}" ]; then
@@ -194,15 +196,15 @@ if [ "$ENCODER" = nvenc ] && [ "$GPU_A" = "$GPU_B" ]; then
 fi
 if [ -n "$CRF" ]; then :
 elif [ "$ENCODER" = nvenc ]; then
-  case "$TIER" in draft) CRF=28 ;; final) CRF=19 ;; *) CRF=16 ;; esac
+  case "$TIER" in draft) CRF=28 ;; review) CRF=21 ;; final) CRF=19 ;; beast) CRF=21 ;; *) CRF=16 ;; esac
 else
-  case "$TIER" in draft) CRF=28 ;; final) CRF=16 ;; *) CRF=16 ;; esac
+  case "$TIER" in draft) CRF=28 ;; review) CRF=20 ;; final) CRF=16 ;; beast) CRF=20 ;; *) CRF=16 ;; esac
 fi
 if [ -n "$PRESET" ]; then :
 elif [ "$ENCODER" = nvenc ]; then
-  case "$TIER" in draft) PRESET=p4 ;; final) PRESET=p7 ;; *) PRESET=p4 ;; esac
+  case "$TIER" in draft) PRESET=p4 ;; review) PRESET=p5 ;; final) PRESET=p7 ;; beast) PRESET=p5 ;; *) PRESET=p4 ;; esac
 else
-  case "$TIER" in draft) PRESET=faster ;; final) PRESET=medium ;; *) PRESET=medium ;; esac
+  case "$TIER" in draft) PRESET=faster ;; review) PRESET=veryfast ;; final) PRESET=medium ;; beast) PRESET=veryfast ;; *) PRESET=medium ;; esac
 fi
 GOP=$((2 * FPS))
 

@@ -89,7 +89,7 @@ while [ $# -gt 0 ]; do
     --detach) DETACH=1 ;;
     --no-gpu) NO_GPU=1 ;;
     --no-fast-capture) NO_FAST=1 ;;
-    --tier) TIER=${2:?--tier needs draft or final}; shift ;;
+    --tier) TIER=${2:?--tier needs beast, draft or final}; shift ;;
     --tier=*) TIER=${1#*=} ;;
     --workers) WORKERS_OPT=${2:?--workers needs a number}; shift ;;
     --workers=*) WORKERS_OPT=${1#*=} ;;
