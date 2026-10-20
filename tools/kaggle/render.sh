@@ -195,7 +195,18 @@ else
 fi
 
 # ── encoder and capture ─────────────────────────────────────────────────────────────────────────
-if [ "${OVH_KAGGLE_NVENC:-0}" = 1 ] && [ "$NO_GPU" = 0 ]; then
+# OVH_KAGGLE_NVENC=1/0 forces GPU/CPU; unset means AUTO — probe a card + this ffmpeg's h264_nvenc
+# and hand the GPU to render.mjs when both answer (same rule as render-split.sh).
+want_gpu=0
+case "${OVH_KAGGLE_NVENC:-auto}" in
+  1|nvenc) want_gpu=1 ;;
+  0|x264)  want_gpu=0 ;;
+  auto)
+    if [ "$NO_GPU" = 0 ] && command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 \
+       && [ -n "$(nvidia-smi -L 2>/dev/null | head -1)" ] \
+       && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then want_gpu=1; fi ;;
+esac
+if [ "$want_gpu" = 1 ] && [ "$NO_GPU" = 0 ]; then
   flags+=(--gpu)
 fi
 capture_note="screenshots (no hardware WebGL: the fast capture is slower than that on a software GPU)"
@@ -332,7 +343,7 @@ if [ "${OVH_KAGGLE_BROWSER_GPU:-software}" = hardware ]; then
 else
   printf '\033[36m→\033[0m browser  : CPU (SwiftShader software rendering)\n'
 fi
-if [ "${OVH_KAGGLE_NVENC:-0}" = 1 ] && [ "$NO_GPU" = 0 ]; then
+if [ "$want_gpu" = 1 ] && [ "$NO_GPU" = 0 ]; then
   tier_note=""
   [ -n "$TIER" ] && tier_note=", retuned for the $TIER tier by .kaggle/ffmpeg-gpu.sh (OVH_KAGGLE_TUNE=off keeps the engine's own)"
   printf '\033[36m→\033[0m encode   : GPU %s, h264_nvenc at the --quality level%s (bin/vh deliver still re-encodes the platform copy on the CPU)\n' "${OVH_KAGGLE_NVENC_GPU:-0}" "$tier_note"

@@ -181,7 +181,7 @@ class Factory:
             return out
         except Exception:   # one card, one process — the honest fallback
             log.warning("split render failed for %s — falling back to render.mjs single process", slug)
-            chrome = "${OVH_KAGGLE_CHROME:-}"
+            chrome = "${OVH_KAGGLE_CHROME:-${CHROME_PATH:-}}"
             cmd2 = (f'node tools/film/render.mjs "{proj}" --browser "{chrome}" --out "{out}" '
                     f'--encoder nvenc --crf 19 --preset p7 --gpus 2 --force')
             self.sh(cmd2)

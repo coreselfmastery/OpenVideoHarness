@@ -120,7 +120,9 @@ for tag in re.findall(r'<[^>]*\bdata-composition-id\b[^>]*>', s):
 def attr(name, where=None):
     m = re.search(r'\b' + name + r'="([\d.]+)"', where if where is not None else s)
     return m.group(1) if m else ""
-dur, fps = attr("data-duration", root), attr("data-fps", root)
+# pages without a data-composition-id root (the film factory declares itself on <body>):
+# search the whole file instead of an empty root — the split needs the length, wherever it lives
+dur, fps = attr("data-duration", root if root else s), attr("data-fps", root if root else s)
 w, h = attr("data-width", root) or "1920", attr("data-height", root) or "1080"
 starts = sorted({float(x) for x in re.findall(r'\bdata-start="([\d.]+)"', s)})
 print(json.dumps({"duration": dur, "fps": fps, "w": w, "h": h, "starts": starts}))
@@ -184,11 +186,31 @@ esac
 awk -v k="$KCUT" -v n="$N" 'BEGIN{exit !(k>=1 && k<n)}' || { printf '\033[31m✗\033[0m the cut landed on frame %s of %s: no room for two halves\n' "$KCUT" "$N" >&2; exit 1; }
 
 # ── the encode: which encoder, which cards ─────────────────────────────────────────────────────────────────────
+# An explicit --encoder wins. Otherwise: OVH_KAGGLE_NVENC=1/0 forces GPU/CPU, and unset (the
+# default) means AUTO — a card answers nvidia-smi -L and this ffmpeg has h264_nvenc compiled in
+# -> GPU encode; a GPU-less box -> the CPU. Nobody has to source .kaggle/env.sh first anymore.
 if [ -z "$ENCODER" ]; then
-  if [ "${OVH_KAGGLE_NVENC:-0}" = 1 ]; then ENCODER=nvenc; else ENCODER=x264; fi
+  case "${OVH_KAGGLE_NVENC:-auto}" in
+    1|nvenc) ENCODER=nvenc; enc_why="OVH_KAGGLE_NVENC=1 (forced GPU)" ;;
+    0|x264)  ENCODER=x264;  enc_why="OVH_KAGGLE_NVENC=0 (forced CPU)" ;;
+    auto)
+      if command -v nvidia-smi >/dev/null 2>&1 && nvidia-smi -L >/dev/null 2>&1 \
+         && [ -n "$(nvidia-smi -L 2>/dev/null | head -1)" ] \
+         && ffmpeg -hide_banner -encoders 2>/dev/null | grep -q h264_nvenc; then
+        ENCODER=nvenc; enc_why="auto: $(nvidia-smi -L 2>/dev/null | grep -c .) card(s) answer and this ffmpeg has h264_nvenc"
+      else
+        ENCODER=x264;  enc_why="auto: no NVIDIA card or no h264_nvenc in this ffmpeg — the CPU it is"
+      fi ;;
+    *) ENCODER=x264; enc_why="OVH_KAGGLE_NVENC='$OVH_KAGGLE_NVENC' (want 0, 1 or auto) — the CPU" ;;
+  esac
+else
+  enc_why="--encoder on the command line"
 fi
 case "$ENCODER" in nvenc|x264) ;; *) printf '\033[31m✗\033[0m --encoder: x264 or nvenc, not "%s"\n' "$ENCODER" >&2; exit 1 ;; esac
 GPUS=${OVH_KAGGLE_GPUS:-0}
+if [ "$GPUS" = 0 ] && [ "$ENCODER" = nvenc ] && command -v nvidia-smi >/dev/null 2>&1; then
+  GPUS=$(nvidia-smi -L 2>/dev/null | grep -c .); [ "$GPUS" -ge 1 ] 2>/dev/null || GPUS=1
+fi
 [ -n "$GPU_A" ] || GPU_A=0
 [ -n "$GPU_B" ] || GPU_B=$((GPUS > 1 ? GPUS - 1 : 0))
 if [ "$ENCODER" = nvenc ] && [ "$GPU_A" = "$GPU_B" ]; then
@@ -300,8 +322,8 @@ if [ "$SKIP_DET" = 0 ] && [ "$DRY" = 0 ] && [ -x "$ROOT/bin/vh" ]; then
   fi
 fi
 
-enc_note=$([ "$ENCODER" = nvenc ] && printf 'h264_nvenc %s cq %s, half A on GPU %s and half B on GPU %s' "$PRESET" "$CRF" "$GPU_A" "$GPU_B" \
-  || printf 'x264 %s crf %s on the CPU' "$PRESET" "$CRF")
+enc_note=$([ "$ENCODER" = nvenc ] && printf 'h264_nvenc %s cq %s, half A on GPU %s and half B on GPU %s (%s)' "$PRESET" "$CRF" "$GPU_A" "$GPU_B" "$enc_why" \
+  || printf 'x264 %s crf %s on the CPU (%s)' "$PRESET" "$CRF" "$enc_why")
 printf '\033[36m→\033[0m %s\n' "$fps_note"
 [ -n "$res_note" ] && printf '\033[36m→\033[0m %s\n' "$res_note"
 printf '\033[36m→\033[0m project  : %s (%s s, %s frames at %s fps)\n' "$PROJ" "$DUR" "$N" "$FPS"
