@@ -1,22 +1,14 @@
-"""groq-film-factory — production film pipeline on top of OpenVideoHarness.
+"""The Discipline Film Factory v2 — real engines.
 
-The factory turns film blueprints (factory/films_part*.py) into finished,
-platform-ready 2-minute videos on Kaggle's 2x T4 boxes:
-
-    blueprint ──▶ AI director (Groq: script polish, scene data, score mood,
-                  metadata) ──▶ OVH project (page-contract engine) ──▶ edge-tts
-                  narration ──▶ code-composed score + sfx ──▶ mix (-14 LUFS)
-                  ──▶ draft render + Groq vision QA ──▶ final render on both
-                  T4s (render-split, NVENC p7 cq19) ──▶ mux, check, deliver.
-
-Every Groq step degrades gracefully to the deterministic blueprint, so the
-pipeline produces the films even with no API key at all.
+One blueprint (films_prime), many picture engines:
+LTX-Video diffusion on the Kaggle 2x T4 box, AI-still kenburns everywhere.
+The audio stack (edge-tts narration, code-composed score, synthesized foley,
+3-bus mix at -14 LUFS) is OpenVideoHarness's own and unchanged.
 """
+from .films_prime import FILM_PRIME
+from .pipeline import Factory, FactoryConfig, Report
 
-from .films_part1 import FILMS_1_3
-from .films_part2 import FILMS_4_5
+# The notebook runs every film in this list; v2 is the 3-minute flagship.
+FILMS = [FILM_PRIME]
 
-FILMS = FILMS_1_3 + FILMS_4_5
-
-__all__ = ["FILMS"]
-__version__ = "1.0.0"
+__all__ = ["FILMS", "FILM_PRIME", "Factory", "FactoryConfig", "Report"]
